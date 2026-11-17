@@ -18,34 +18,39 @@
 
       <form id="search-form" class="search-form">
         <div class="school-field">
-          <label for="school-search">Šola</label>
+          <span id="school-label" class="field-label">Šola</span>
           <div class="school-row">
-            <div class="school-combobox">
-              <input id="school-search" type="search" role="combobox" autocomplete="off" spellcheck="false"
-                aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="school-options"
-                placeholder="Poišči šolo">
-              <button id="school-toggle" class="school-toggle" type="button" aria-label="Prikaži šole" tabindex="-1">⌄</button>
-              <div id="school-options" class="school-options" role="listbox" hidden></div>
-            </div>
+            <details id="school-dropdown" class="choice-dropdown" data-disabled>
+              <summary aria-labelledby="school-label school-summary">
+                <span id="school-summary">Izberi šolo</span><span class="chevron" aria-hidden="true">⌄</span>
+              </summary>
+              <div class="choice-panel">
+                <label class="visually-hidden" for="school-search">Poišči šolo</label>
+                <input id="school-search" class="choice-search" type="search" autocomplete="off" spellcheck="false" placeholder="Poišči šolo …">
+                <div id="school-options" class="choice-list" role="radiogroup" aria-labelledby="school-label"></div>
+              </div>
+            </details>
             <button id="favorite-button" class="favorite-button" type="button" aria-pressed="false"
               aria-label="Nastavi kot privzeto šolo" title="Nastavi kot privzeto šolo" disabled>☆</button>
           </div>
         </div>
         <label>
           <span>Datum</span>
-          <select id="date-select" name="date" disabled required>
-            <option value="">Nalaganje …</option>
-          </select>
+          <input id="date-input" name="date" type="date" disabled required>
         </label>
-        <label>
-          <span>Šolska ura</span>
-          <select id="period-select" name="period" disabled required>
-            <option value="">Nalaganje …</option>
-          </select>
-        </label>
+        <div class="period-field">
+          <span id="period-label" class="field-label">Šolska ura</span>
+          <details id="period-dropdown" class="choice-dropdown" data-disabled>
+            <summary aria-labelledby="period-label period-summary">
+              <span id="period-summary">Nalaganje …</span><span class="chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <div class="choice-panel compact-panel">
+              <div id="period-options" class="choice-list" role="radiogroup" aria-labelledby="period-label"></div>
+            </div>
+          </details>
+        </div>
         <div class="actions">
           <button id="search-button" class="primary-button" type="submit" disabled>Poišči</button>
-          <button id="now-button" class="secondary-button" type="button">Zdaj</button>
         </div>
       </form>
 

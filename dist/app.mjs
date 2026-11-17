@@ -5,24 +5,26 @@ import {
   mergeSchools,
   normalizeSchool,
   normalizeSearch,
-  timetableUrlForToken,
   tokenFromTimetableUrl,
 } from "./school-state.mjs";
+import { chooseInitialSchedule, localClock } from "./schedule-state.mjs";
 
 const LEGACY_STORAGE_KEY = "proste-ucilnice.schools.v1";
 const FAVORITE_STORAGE_KEY = "proste-ucilnice.favorite-school.v1";
 const FALLBACK_SCHOOL = normalizeSchool({ token: FALLBACK_TOKEN, name: "Gimnazija Kranj" });
 
 const elements = {
+  schoolDropdown: document.querySelector("#school-dropdown"),
+  schoolSummary: document.querySelector("#school-summary"),
   schoolSearch: document.querySelector("#school-search"),
-  schoolToggle: document.querySelector("#school-toggle"),
   schoolOptions: document.querySelector("#school-options"),
   favoriteButton: document.querySelector("#favorite-button"),
-  date: document.querySelector("#date-select"),
-  period: document.querySelector("#period-select"),
+  date: document.querySelector("#date-input"),
+  periodDropdown: document.querySelector("#period-dropdown"),
+  periodSummary: document.querySelector("#period-summary"),
+  periodOptions: document.querySelector("#period-options"),
   searchForm: document.querySelector("#search-form"),
   searchButton: document.querySelector("#search-button"),
-  nowButton: document.querySelector("#now-button"),
   addForm: document.querySelector("#add-school-form"),
   urlInput: document.querySelector("#school-url"),
   status: document.querySelector("#status"),
@@ -39,10 +41,9 @@ const elements = {
 let schools = [];
 let selectedSchool = null;
 let currentSchool = null;
+let selectedPeriodNumber = null;
 let activeController = null;
-let visibleSchools = [];
-let activeOption = -1;
-let schoolListOpen = false;
+let loading = false;
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -95,6 +96,7 @@ function setFavoriteToken(token) {
     // The selection still works when browser storage is unavailable.
   }
   updateFavoriteButton();
+  renderSchoolOptions();
 }
 
 async function apiGet(path) {
@@ -121,13 +123,38 @@ function setStatus(message, kind = "info") {
   elements.status.dataset.kind = kind;
 }
 
-function setLoading(loading) {
+function setDropdownDisabled(dropdown, disabled) {
+  const summary = dropdown.querySelector("summary");
+  if (disabled) {
+    dropdown.dataset.disabled = "";
+    dropdown.open = false;
+    summary.setAttribute("aria-disabled", "true");
+    summary.tabIndex = -1;
+  } else {
+    delete dropdown.dataset.disabled;
+    summary.removeAttribute("aria-disabled");
+    summary.tabIndex = 0;
+  }
+}
+
+function hasValidSelection() {
+  return Boolean(currentSchool && selectedPeriodNumber !== null && elements.date.value && elements.date.checkValidity());
+}
+
+function refreshDisabledState() {
+  setDropdownDisabled(elements.schoolDropdown, loading || !schools.length);
+  setDropdownDisabled(elements.periodDropdown, loading || !currentSchool?.inspection.periods.length);
   elements.schoolSearch.disabled = loading;
-  elements.schoolToggle.disabled = loading;
+  elements.date.disabled = loading || !currentSchool;
   elements.urlInput.disabled = loading;
   elements.addForm.querySelector("button").disabled = loading;
-  elements.searchButton.disabled = loading || !currentSchool;
+  elements.searchButton.disabled = loading || !hasValidSelection();
   elements.favoriteButton.disabled = loading || !currentSchool;
+}
+
+function setLoading(value) {
+  loading = value;
+  refreshDisabledState();
 }
 
 function clearResults() {
@@ -136,28 +163,29 @@ function clearResults() {
   elements.unknownList.replaceChildren();
 }
 
+function clearScheduleControls() {
+  selectedPeriodNumber = null;
+  elements.date.value = "";
+  elements.date.removeAttribute("min");
+  elements.date.removeAttribute("max");
+  elements.periodSummary.textContent = "Nalaganje …";
+  elements.periodOptions.replaceChildren();
+}
+
 function fillControls(inspection) {
-  elements.date.replaceChildren();
-  for (const date of inspection.dates) {
-    const option = document.createElement("option");
-    option.value = date;
-    option.textContent = formatDate(date);
-    elements.date.append(option);
-  }
-  elements.period.replaceChildren();
-  for (const period of inspection.periods) {
-    const option = document.createElement("option");
-    option.value = String(period.number);
-    option.textContent = `${period.label} · ${formatMinute(period.startMinute)}–${formatMinute(period.endMinute)}`;
-    elements.period.append(option);
-  }
-  elements.date.disabled = !inspection.dates.length;
-  elements.period.disabled = !inspection.periods.length;
+  elements.date.min = inspection.schoolYear.start;
+  elements.date.max = inspection.schoolYear.end;
+  const initial = chooseInitialSchedule(inspection.dates, inspection.periods, localClock());
+  elements.date.value = initial.date;
+  selectedPeriodNumber = initial.periodNumber;
+  renderPeriodOptions();
+  refreshDisabledState();
 }
 
 function updateSelectedSchool() {
-  elements.schoolSearch.value = selectedSchool?.name ?? "";
+  elements.schoolSummary.textContent = selectedSchool?.name ?? "Izberi šolo";
   updateFavoriteButton();
+  renderSchoolOptions();
 }
 
 function updateFavoriteButton() {
@@ -169,91 +197,84 @@ function updateFavoriteButton() {
   elements.favoriteButton.title = label;
 }
 
-function openSchoolList({ showAll = false } = {}) {
-  if (elements.schoolSearch.disabled) return;
-  if (showAll) elements.schoolSearch.value = "";
-  schoolListOpen = true;
-  elements.schoolSearch.setAttribute("aria-expanded", "true");
-  elements.schoolOptions.hidden = false;
-  renderSchoolOptions();
-}
-
-function closeSchoolList({ restore = true } = {}) {
-  schoolListOpen = false;
-  activeOption = -1;
-  elements.schoolSearch.setAttribute("aria-expanded", "false");
-  elements.schoolSearch.removeAttribute("aria-activedescendant");
-  elements.schoolOptions.hidden = true;
-  if (restore) updateSelectedSchool();
+function duplicateNameCounts() {
+  const counts = new Map();
+  for (const school of schools) {
+    const key = normalizeSearch(school.name);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
 }
 
 function renderSchoolOptions() {
-  if (!schoolListOpen) return;
-  visibleSchools = filterSchools(schools, elements.schoolSearch.value);
+  const visibleSchools = filterSchools(schools, elements.schoolSearch.value, 50, selectedSchool?.token);
+  const nameCounts = duplicateNameCounts();
   elements.schoolOptions.replaceChildren();
-  const nameCounts = new Map();
-  for (const school of schools) {
-    const key = normalizeSearch(school.name);
-    nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
-  }
   if (!visibleSchools.length) {
     const empty = document.createElement("p");
     empty.className = "school-empty";
     empty.textContent = "Ni najdenih šol. Dodaj povezavo spodaj.";
     elements.schoolOptions.append(empty);
-    activeOption = -1;
     return;
   }
-  if (activeOption >= visibleSchools.length) activeOption = visibleSchools.length - 1;
-  for (const [index, school] of visibleSchools.entries()) {
-    const option = document.createElement("button");
-    option.type = "button";
-    option.id = `school-option-${index}`;
-    option.className = "school-option";
-    option.setAttribute("role", "option");
-    option.setAttribute("aria-selected", String(selectedSchool?.token === school.token));
-    option.tabIndex = -1;
-    option.append(document.createTextNode(school.name));
+  for (const school of visibleSchools) {
+    const option = document.createElement("label");
+    option.className = "choice";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "school-choice";
+    radio.value = school.token;
+    radio.checked = selectedSchool?.token === school.token;
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      elements.schoolDropdown.open = false;
+      elements.schoolDropdown.querySelector("summary").focus();
+      loadSchool(school);
+    });
+    const name = document.createElement("span");
+    name.textContent = school.name;
+    option.append(radio, name);
     if ((nameCounts.get(normalizeSearch(school.name)) ?? 0) > 1) {
       const suffix = document.createElement("small");
       suffix.textContent = school.token.slice(0, 6);
       option.append(suffix);
     }
-    option.addEventListener("mouseenter", () => setActiveOption(index));
-    option.addEventListener("mousedown", (event) => event.preventDefault());
-    option.addEventListener("click", () => selectSchool(school));
     elements.schoolOptions.append(option);
   }
-  applyActiveOption();
 }
 
-function setActiveOption(index) {
-  activeOption = index;
-  applyActiveOption();
-}
-
-function applyActiveOption() {
-  const options = [...elements.schoolOptions.querySelectorAll(".school-option")];
-  for (const [index, option] of options.entries()) option.classList.toggle("active", index === activeOption);
-  if (activeOption >= 0 && options[activeOption]) {
-    elements.schoolSearch.setAttribute("aria-activedescendant", options[activeOption].id);
-    options[activeOption].scrollIntoView({ block: "nearest" });
-  } else {
-    elements.schoolSearch.removeAttribute("aria-activedescendant");
+function renderPeriodOptions() {
+  elements.periodOptions.replaceChildren();
+  const periods = currentSchool?.inspection.periods ?? [];
+  for (const period of periods) {
+    const option = document.createElement("label");
+    option.className = "choice";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "period-choice";
+    radio.value = String(period.number);
+    radio.checked = selectedPeriodNumber === period.number;
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      selectedPeriodNumber = period.number;
+      updatePeriodSummary();
+      elements.periodDropdown.open = false;
+      elements.periodDropdown.querySelector("summary").focus();
+      refreshDisabledState();
+    });
+    const label = document.createElement("span");
+    label.textContent = `${period.label} · ${formatMinute(period.startMinute)}–${formatMinute(period.endMinute)}`;
+    option.append(radio, label);
+    elements.periodOptions.append(option);
   }
+  updatePeriodSummary();
 }
 
-function moveActiveOption(direction) {
-  if (!schoolListOpen) openSchoolList();
-  if (!visibleSchools.length) return;
-  const next = activeOption < 0 ? (direction > 0 ? 0 : visibleSchools.length - 1) :
-    (activeOption + direction + visibleSchools.length) % visibleSchools.length;
-  setActiveOption(next);
-}
-
-function selectSchool(school) {
-  closeSchoolList({ restore: false });
-  loadSchool(school);
+function updatePeriodSummary() {
+  const period = currentSchool?.inspection.periods.find((item) => item.number === selectedPeriodNumber);
+  elements.periodSummary.textContent = period
+    ? `${period.label} · ${formatMinute(period.startMinute)}–${formatMinute(period.endMinute)}`
+    : "Izberi šolsko uro";
 }
 
 async function loadSchool(entry, { added = false } = {}) {
@@ -262,12 +283,11 @@ async function loadSchool(entry, { added = false } = {}) {
   activeController = controller;
   selectedSchool = normalizeSchool(entry);
   currentSchool = null;
+  clearScheduleControls();
   updateSelectedSchool();
   clearResults();
   setLoading(true);
   setStatus("Nalaganje urnika …");
-  elements.date.disabled = true;
-  elements.period.disabled = true;
   let fallback = null;
   try {
     const inspection = await apiRequest("/api/v1/schools/inspect", { timetableUrl: entry.timetableUrl }, controller.signal);
@@ -305,7 +325,7 @@ async function loadSchool(entry, { added = false } = {}) {
 }
 
 async function searchRooms() {
-  if (!currentSchool) return;
+  if (!hasValidSelection()) return;
   activeController?.abort();
   const controller = new AbortController();
   activeController = controller;
@@ -316,7 +336,7 @@ async function searchRooms() {
     const result = await apiRequest("/api/v1/availability", {
       timetableUrl: currentSchool.entry.timetableUrl,
       date: elements.date.value,
-      period: Number(elements.period.value),
+      period: selectedPeriodNumber,
     }, controller.signal);
     renderResults(result);
     setStatus(`Preverjeno ob ${new Intl.DateTimeFormat("sl-SI", { hour: "2-digit", minute: "2-digit" }).format(new Date(result.fetchedAt))}`, "success");
@@ -335,13 +355,11 @@ function renderResults(result) {
   elements.roomList.replaceChildren();
   elements.unknownList.replaceChildren();
   elements.resultMeta.textContent = `${formatDate(result.date)} · ${result.period.label}, ${formatMinute(result.period.startMinute)}–${formatMinute(result.period.endMinute)}`;
-
   const count = document.createElement("strong");
   count.textContent = String(result.rooms.free.length);
   const label = document.createElement("span");
   label.textContent = result.rooms.free.length === 1 ? "prosta učilnica" : "prostih učilnic";
   elements.freeSummary.replaceChildren(count, label);
-
   for (const room of result.rooms.free) {
     const card = document.createElement("div");
     card.className = "room-card";
@@ -359,7 +377,6 @@ function renderResults(result) {
     empty.textContent = "Za izbrani termin ni potrjeno proste učilnice.";
     elements.roomList.append(empty);
   }
-
   elements.unknownSection.hidden = !result.rooms.unknown.length;
   elements.unknownSummary.textContent = `Ni bilo mogoče preveriti (${result.rooms.unknown.length})`;
   for (const room of result.rooms.unknown) {
@@ -367,21 +384,6 @@ function renderResults(result) {
     item.textContent = room.name;
     elements.unknownList.append(item);
   }
-}
-
-function useCurrentTime() {
-  if (!currentSchool) return;
-  const now = new Date();
-  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const minute = now.getHours() * 60 + now.getMinutes();
-  const period = currentSchool.inspection.periods.find((item) => minute >= item.startMinute && minute < item.endMinute);
-  if (!currentSchool.inspection.dates.includes(date) || !period) {
-    setStatus("Trenutni čas ni del prikazanega urnika.", "error");
-    return;
-  }
-  elements.date.value = date;
-  elements.period.value = String(period.number);
-  searchRooms();
 }
 
 function formatDate(value) {
@@ -393,41 +395,46 @@ function formatMinute(value) {
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
 }
 
-elements.schoolSearch.addEventListener("focus", () => openSchoolList());
-elements.schoolSearch.addEventListener("input", () => {
-  activeOption = 0;
-  openSchoolList();
+for (const dropdown of [elements.schoolDropdown, elements.periodDropdown]) {
+  const summary = dropdown.querySelector("summary");
+  summary.addEventListener("click", (event) => {
+    if (dropdown.hasAttribute("data-disabled")) event.preventDefault();
+  });
+  dropdown.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && dropdown.open) {
+      event.preventDefault();
+      dropdown.open = false;
+      summary.focus();
+    }
+  });
+}
+
+elements.schoolDropdown.addEventListener("toggle", () => {
+  if (!elements.schoolDropdown.open) return;
+  elements.periodDropdown.open = false;
+  elements.schoolSearch.value = "";
+  renderSchoolOptions();
+  requestAnimationFrame(() => elements.schoolSearch.focus());
 });
-elements.schoolSearch.addEventListener("blur", () => setTimeout(() => closeSchoolList(), 0));
-elements.schoolSearch.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    moveActiveOption(event.key === "ArrowDown" ? 1 : -1);
-  } else if (event.key === "Enter" && schoolListOpen && activeOption >= 0) {
-    event.preventDefault();
-    selectSchool(visibleSchools[activeOption]);
-  } else if (event.key === "Escape") {
-    event.preventDefault();
-    closeSchoolList();
-  }
+elements.schoolSearch.addEventListener("input", renderSchoolOptions);
+elements.periodDropdown.addEventListener("toggle", () => {
+  if (elements.periodDropdown.open) elements.schoolDropdown.open = false;
 });
-elements.schoolToggle.addEventListener("mousedown", (event) => event.preventDefault());
-elements.schoolToggle.addEventListener("click", () => {
-  if (schoolListOpen) closeSchoolList();
-  else {
-    openSchoolList({ showAll: true });
-    elements.schoolSearch.focus();
+document.addEventListener("click", (event) => {
+  for (const dropdown of [elements.schoolDropdown, elements.periodDropdown]) {
+    if (dropdown.open && !dropdown.contains(event.target)) dropdown.open = false;
   }
 });
 elements.favoriteButton.addEventListener("click", () => {
   if (!currentSchool?.entry?.token) return;
   setFavoriteToken(favoriteToken() === currentSchool.entry.token ? null : currentSchool.entry.token);
 });
+elements.date.addEventListener("input", refreshDisabledState);
 elements.searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!elements.date.reportValidity()) return;
   searchRooms();
 });
-elements.nowButton.addEventListener("click", useCurrentTime);
 elements.addForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loadSchool({ timetableUrl: elements.urlInput.value }, { added: true });
@@ -446,7 +453,6 @@ async function initialize() {
   } finally {
     setLoading(false);
   }
-
   const storedFavorite = favoriteToken();
   const initialSchool = chooseDefaultSchool(schools, storedFavorite);
   if (storedFavorite && initialSchool?.token !== storedFavorite) setFavoriteToken(null);

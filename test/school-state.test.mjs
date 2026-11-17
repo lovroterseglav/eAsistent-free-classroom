@@ -20,6 +20,7 @@ test("search is case and accent insensitive", () => {
   assert.equal(normalizeSearch("  ŠOLA Črnuče "), "sola crnuce");
   assert.deepEqual(filterSchools(schools, "crnuce").map(({ token }) => token), [otherToken]);
   assert.equal(filterSchools([...schools, ...schools], "", 2).length, 2);
+  assert.equal(filterSchools(schools, "", 50, otherToken)[0]?.token, otherToken);
 });
 
 test("merges by token and constructs stable root URLs", () => {

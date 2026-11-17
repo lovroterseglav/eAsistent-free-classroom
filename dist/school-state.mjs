@@ -37,10 +37,11 @@ export function mergeSchools(...collections) {
   }));
 }
 
-export function filterSchools(schools, query, limit = 50) {
+export function filterSchools(schools, query, limit = 50, preferredToken = null) {
   const normalizedQuery = normalizeSearch(query);
   return schools
     .filter((school) => !normalizedQuery || normalizeSearch(school.name).includes(normalizedQuery))
+    .sort((left, right) => Number(right.token === preferredToken) - Number(left.token === preferredToken))
     .slice(0, limit);
 }
 
