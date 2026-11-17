@@ -50,11 +50,11 @@ export function schoolYearBounds(today: string): SchoolYearBounds {
 export function schoolWeekNumber(date: string, bounds: SchoolYearBounds): number | null {
   const requested = validDateParts(date);
   if (!requested || date < bounds.start || date > bounds.end) return null;
-  const start = dateAtNoonUtc(bounds.start)!;
-  const day = start.getUTCDay();
-  start.setUTCDate(start.getUTCDate() - (day === 0 ? 6 : day - 1));
   const target = dateAtNoonUtc(date)!;
-  return Math.floor((target.getTime() - start.getTime()) / (7 * 86_400_000)) + 1;
+  const day = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1, 12));
+  return Math.ceil(((target.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
 }
 
 export function parsePublicTimetableUrl(value: string): { url: string; schoolToken: string; schoolRoot: string } {

@@ -7,12 +7,15 @@ function response(html: string): Response {
   return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
 }
 
-test("calculates formal school-year bounds and sequential week numbers", () => {
+test("calculates formal school-year bounds and ISO week numbers", () => {
   const bounds = schoolYearBounds("2027-01-12");
   assert.deepEqual(bounds, { start: "2026-09-01", end: "2027-08-31" });
-  assert.equal(schoolWeekNumber("2026-09-01", bounds), 1);
-  assert.equal(schoolWeekNumber("2026-11-17", bounds), 12);
-  assert.equal(schoolWeekNumber("2027-08-31", bounds), 53);
+  assert.equal(schoolWeekNumber("2026-09-01", bounds), 36);
+  assert.equal(schoolWeekNumber("2026-11-17", bounds), 47);
+  assert.equal(schoolWeekNumber("2026-11-27", bounds), 48);
+  assert.equal(schoolWeekNumber("2027-01-01", bounds), 53);
+  assert.equal(schoolWeekNumber("2027-01-04", bounds), 1);
+  assert.equal(schoolWeekNumber("2027-08-31", bounds), 35);
   assert.equal(schoolWeekNumber("2026-08-31", bounds), null);
   assert.equal(schoolWeekNumber("2027-02-29", bounds), null);
 });
@@ -24,15 +27,15 @@ test("requests the target school week for the school and every classroom", async
     requested.push(url.href);
     const base = new URL(url);
     base.searchParams.delete("teden");
-    if (base.href === SCHOOL_URL) return response(CLASS_PAGE.replaceAll("2026-11-17", "2027-02-03"));
-    if (base.href === ROOM_ONE_URL) return response(ROOM_INDEX_PAGE.replaceAll("2026-11-17", "2027-02-03"));
-    return response(ROOM_INDEX_PAGE.replaceAll("2026-11-17", "2027-02-03"));
+    if (base.href === SCHOOL_URL) return response(CLASS_PAGE.replaceAll("2026-11-17", "2026-11-27"));
+    if (base.href === ROOM_ONE_URL) return response(ROOM_INDEX_PAGE.replaceAll("2026-11-17", "2026-11-27"));
+    return response(ROOM_INDEX_PAGE.replaceAll("2026-11-17", "2026-11-27"));
   };
   const service = new EasistentService(fetcher, undefined, undefined, () => "2026-11-17");
-  const result = await service.availability(SCHOOL_URL, "2027-02-03", 1);
-  assert.equal(result.date, "2027-02-03");
+  const result = await service.availability(SCHOOL_URL, "2026-11-27", 1);
+  assert.equal(result.date, "2026-11-27");
   assert.ok(requested.length >= 3);
-  assert.ok(requested.every((url) => new URL(url).searchParams.get("teden") === "23"));
+  assert.ok(requested.every((url) => new URL(url).searchParams.get("teden") === "48"));
 });
 
 test("rejects invalid, out-of-year, and missing timetable dates", async () => {
