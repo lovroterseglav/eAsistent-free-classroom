@@ -61,66 +61,8 @@ Vrne potrjeno proste učilnice, učilnice z neznanim stanjem in število zaseden
 
 Pri začasni omrežni napaki, timeoutu ali odgovoru HTTP 429/502/503/504 API zahtevo ponovi trikrat z zamiki 250 ms, 500 ms in 1.000 ms. Odgovorov 404 in 410 ne ponavlja.
 
-## Namestitev na Hetzner
-
-Na strežniku potrebuješ Node.js 22 ali novejši, npm in Nginx. Docker ni potreben.
-
-1. Kopiraj repozitorij v `/opt/proste-ucilnice`, namesti odvisnosti in prevedi API:
-
-   ```sh
-   cd /opt/proste-ucilnice
-   sudo npm --prefix api ci
-   sudo npm --prefix api run build
-   sudo npm --prefix api prune --omit=dev
-   ```
-
-2. Namesti produkcijske nastavitve. Datoteko lahko pozneje spremeniš brez urejanja systemd enote:
-
-   ```sh
-   sudo install -d -m 0750 -o root -g deploy /opt/config/proste-ucilnice
-   sudo install -m 0640 -o root -g deploy \
-     deploy/proste-ucilnice.env.example /opt/config/proste-ucilnice/env
-   ```
-
-3. Namesti in zaženi systemd storitev:
-
-   ```sh
-   sudo cp deploy/proste-ucilnice.service.example /etc/systemd/system/proste-ucilnice.service
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now proste-ucilnice
-   curl http://127.0.0.1:3100/api/v1/health
-   ```
-
-   Storitev teče kot uporabnik `deploy`, posluša samo na `127.0.0.1:3100`, se po napaki samodejno ponovno zažene in hrani naučeni seznam šol v `/var/lib/proste-ucilnice/schools.json`.
-
-4. Objavi statične datoteke:
-
-   ```sh
-   sudo mkdir -p /var/www/proste-ucilnice
-   sudo cp -a dist/. /var/www/proste-ucilnice/
-   ```
-
-5. Kopiraj `deploy/nginx.conf.example` v `/etc/nginx/sites-available/proste-ucilnice`, zamenjaj `classrooms.example.com` s svojo domeno in omogoči konfiguracijo:
-
-   ```sh
-   sudo ln -s /etc/nginx/sites-available/proste-ucilnice /etc/nginx/sites-enabled/proste-ucilnice
-   sudo nginx -t
-   sudo systemctl reload nginx
-   ```
-
-6. Pred uporabo preveri oba javna endpointa:
-
-   ```sh
-   curl https://TVOJA-DOMENA/api/v1/health
-   curl -X POST https://TVOJA-DOMENA/api/v1/schools/inspect \
-     -H 'content-type: application/json' \
-     --data '{"timetableUrl":"https://urniki.easistent.com/urniki/56149a5b3eb5cbefdaf9c9ded39a80c8c31d8f33"}'
-   ```
-
-HTTPS nastavi v Nginxu za svojo domeno, preden stran ponudiš uporabnikom. Ker odjemalec uporablja relativne poti `/api/...`, posebna nastavitev naslova API ni potrebna.
-
 ## Preverjanje združljivosti
 
 Repozitorij vsebuje teste z lokalnimi HTML vzorci in teste celotnih API endpointov. Poleg tega sta bila 17. novembra 2026 zagnana oba endpointa proti navedenemu živemu urniku Gimnazije Kranj: pregled je našel 43 učilnic, izračun razpoložljivosti pa je brez neznanih rezultatov preveril vseh 43 strani učilnic.
 
-Javni HTML ni uradno opisan API in se lahko spremeni. Po vsaki namestitvi zato poženi oba `curl` ukaza iz prejšnjega razdelka.
+Javni HTML ni uradno opisan API in se lahko spremeni. Po vsaki namestitvi zato poženi teste in preveri `/api/v1/health`.
