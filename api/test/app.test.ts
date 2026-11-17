@@ -25,17 +25,20 @@ function service(): EasistentService {
     [ROOM_TWO_URL, ROOM_CANCELLED_PAGE],
   ]);
   const fetcher: UpstreamFetcher = async (input) => {
-    const url = String(input);
-    if (url === ROOM_ONE_URL) {
-      const hits = fetcherHits.get(url) ?? 0;
-      fetcherHits.set(url, hits + 1);
+    const requestedUrl = String(input);
+    const url = new URL(requestedUrl);
+    url.searchParams.delete("teden");
+    const normalizedUrl = url.href;
+    if (normalizedUrl === ROOM_ONE_URL) {
+      const hits = fetcherHits.get(normalizedUrl) ?? 0;
+      fetcherHits.set(normalizedUrl, hits + 1);
       return response(hits === 0 ? ROOM_INDEX_PAGE : ROOM_FREE_PAGE);
     }
-    const page = pages.get(url);
+    const page = pages.get(normalizedUrl);
     return page ? response(page) : new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
   };
   const fetcherHits = new Map<string, number>();
-  return new EasistentService(fetcher);
+  return new EasistentService(fetcher, undefined, undefined, () => "2026-11-17");
 }
 
 test("health endpoint is available", async () => {
@@ -53,6 +56,7 @@ test("inspect returns school dates, periods, and classroom count", async () => {
   assert.equal(result.statusCode, 200);
   assert.equal(result.json().school.name, "Gimnazija Kranj");
   assert.equal(result.json().classroomCount, 2);
+  assert.deepEqual(result.json().schoolYear, { start: "2026-09-01", end: "2027-08-31" });
   const listed = await app.inject({ method: "GET", url: "/api/v1/schools" });
   assert.deepEqual(listed.json(), {
     v: 1,

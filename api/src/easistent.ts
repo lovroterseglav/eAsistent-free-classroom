@@ -13,6 +13,7 @@ const SCHOOL_TOKEN = /^[a-f0-9]{40}$/i;
 const MAX_HTML_SIZE = 2 * 1024 * 1024;
 const RETRY_DELAYS_MS = [250, 500, 1_000] as const;
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export class AppError extends Error {
   constructor(
@@ -32,6 +33,29 @@ export interface PageResult {
 
 export type UpstreamFetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 export type RetryWait = (milliseconds: number, signal?: AbortSignal) => Promise<void>;
+export type TodayProvider = () => string;
+
+export interface SchoolYearBounds {
+  start: string;
+  end: string;
+}
+
+export function schoolYearBounds(today: string): SchoolYearBounds {
+  const parts = validDateParts(today);
+  if (!parts) throw new Error("Today provider returned an invalid date");
+  const startYear = parts.month >= 9 ? parts.year : parts.year - 1;
+  return { start: `${startYear}-09-01`, end: `${startYear + 1}-08-31` };
+}
+
+export function schoolWeekNumber(date: string, bounds: SchoolYearBounds): number | null {
+  const requested = validDateParts(date);
+  if (!requested || date < bounds.start || date > bounds.end) return null;
+  const start = dateAtNoonUtc(bounds.start)!;
+  const day = start.getUTCDay();
+  start.setUTCDate(start.getUTCDate() - (day === 0 ? 6 : day - 1));
+  const target = dateAtNoonUtc(date)!;
+  return Math.floor((target.getTime() - start.getTime()) / (7 * 86_400_000)) + 1;
+}
 
 export function parsePublicTimetableUrl(value: string): { url: string; schoolToken: string; schoolRoot: string } {
   let url: URL;
@@ -70,6 +94,7 @@ export class EasistentService {
     readonly fetcher: UpstreamFetcher = fetch,
     cache = new TimedLruCache<PageResult>(),
     readonly retryWait: RetryWait = waitForRetry,
+    readonly today: TodayProvider = currentDateInLjubljana,
   ) {
     this.pageCache = cache;
   }
@@ -86,7 +111,8 @@ export class EasistentService {
     let roomMetadata = seedMetadata;
     for (const candidate of classroomIndexCandidates(seed.html, seed.responseUrl, parsedUrl.schoolRoot)) {
       try {
-        const page = candidate === seed.responseUrl ? seed : await this.fetchPage(candidate, signal);
+        const candidateUrl = inheritSchoolWeek(candidate, seed.responseUrl);
+        const page = candidateUrl === seed.responseUrl ? seed : await this.fetchPage(candidateUrl, signal);
         const discovered = parseClassrooms(page.html, page.responseUrl);
         if (discovered.length) {
           classrooms = discovered.sort(naturalRoomSort);
@@ -112,6 +138,7 @@ export class EasistentService {
         },
         dates: roomMetadata.dates,
         periods: roomMetadata.periods,
+        schoolYear: schoolYearBounds(this.today()),
         classroomCount: classrooms.length,
         fetchedAt: new Date().toISOString(),
       },
@@ -120,15 +147,33 @@ export class EasistentService {
   }
 
   async availability(timetableUrl: string, date: string, periodNumber: number, signal?: AbortSignal): Promise<AvailabilityResult> {
-    const inspected = await this.inspect(timetableUrl, signal);
+    const bounds = schoolYearBounds(this.today());
+    const week = schoolWeekNumber(date, bounds);
+    if (week === null) {
+      const code = validDateParts(date) ? "DATE_OUTSIDE_SCHOOL_YEAR" : "INVALID_DATE";
+      const message = validDateParts(date) ? "Datum ni v trenutnem šolskem letu." : "Datum ni veljaven.";
+      throw new AppError(400, code, message);
+    }
+    let inspected: InspectedSchool;
+    try {
+      inspected = await this.inspect(withSchoolWeek(timetableUrl, week), signal);
+    } catch (error) {
+      if (error instanceof AppError && error.code === "TIMETABLE_NOT_FOUND") {
+        throw new AppError(400, "DATE_NOT_IN_TIMETABLE", "Za izbrani datum urnik ni na voljo.");
+      }
+      throw error;
+    }
     const period = inspected.inspection.periods.find((item) => item.number === periodNumber);
     if (!inspected.inspection.dates.includes(date) || !period) {
-      throw new AppError(400, "INVALID_SLOT", "Datum ali šolska ura nista del naloženega urnika.");
+      if (!inspected.inspection.dates.includes(date)) {
+        throw new AppError(400, "DATE_NOT_IN_TIMETABLE", "Za izbrani datum urnik ni na voljo.");
+      }
+      throw new AppError(400, "INVALID_SLOT", "Šolska ura ni del naloženega urnika.");
     }
 
     const states = await mapWithConcurrency(inspected.classrooms, 6, async (room) => {
       try {
-        const page = await this.fetchPage(room.url, signal);
+        const page = await this.fetchPage(withSchoolWeek(room.url, week), signal);
         return { room, state: roomAvailability(page.html, date, periodNumber) };
       } catch (error) {
         if (signal?.aborted) throw error;
@@ -226,6 +271,45 @@ export class EasistentService {
     }
     throw new AppError(502, "UPSTREAM_UNREACHABLE", "Povezave z eAsistentom ni bilo mogoče vzpostaviti.");
   }
+}
+
+function withSchoolWeek(value: string, week: number): string {
+  const url = new URL(value);
+  url.searchParams.set("teden", String(week));
+  return url.href;
+}
+
+function inheritSchoolWeek(value: string, source: string): string {
+  const week = new URL(source).searchParams.get("teden");
+  if (!week) return value;
+  const url = new URL(value);
+  url.searchParams.set("teden", week);
+  return url.href;
+}
+
+function validDateParts(value: string): { year: number; month: number; day: number } | null {
+  const match = value.match(DATE_PATTERN);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return { year, month, day };
+}
+
+function dateAtNoonUtc(value: string): Date | null {
+  const parts = validDateParts(value);
+  return parts ? new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)) : null;
+}
+
+function currentDateInLjubljana(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Ljubljana",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function waitForRetry(milliseconds: number, signal?: AbortSignal): Promise<void> {

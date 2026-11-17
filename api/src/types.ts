@@ -20,6 +20,10 @@ export interface SchoolInspection {
   };
   dates: string[];
   periods: Period[];
+  schoolYear: {
+    start: string;
+    end: string;
+  };
   classroomCount: number;
   fetchedAt: string;
 }
