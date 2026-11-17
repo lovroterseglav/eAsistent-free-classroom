@@ -1,5 +1,6 @@
 import { TimedLruCache } from "./cache.js";
 import {
+  ajaxTimetableUrl,
   classroomIndexCandidates,
   naturalRoomSort,
   parseClassrooms,
@@ -14,6 +15,7 @@ const MAX_HTML_SIZE = 2 * 1024 * 1024;
 const RETRY_DELAYS_MS = [250, 500, 1_000] as const;
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const AJAX_PATH_PATTERN = /^\/urniki\/ajax_urnik\/([a-f0-9]{40})(?:\/\d+){7}\/?$/i;
 
 export class AppError extends Error {
   constructor(
@@ -111,7 +113,7 @@ export class EasistentService {
     let roomMetadata = seedMetadata;
     for (const candidate of classroomIndexCandidates(seed.html, seed.responseUrl, parsedUrl.schoolRoot)) {
       try {
-        const candidateUrl = inheritSchoolWeek(candidate, seed.responseUrl);
+        const candidateUrl = candidate;
         const page = candidateUrl === seed.responseUrl ? seed : await this.fetchPage(candidateUrl, signal);
         const discovered = parseClassrooms(page.html, page.responseUrl);
         if (discovered.length) {
@@ -154,26 +156,41 @@ export class EasistentService {
       const message = validDateParts(date) ? "Datum ni v trenutnem šolskem letu." : "Datum ni veljaven.";
       throw new AppError(400, code, message);
     }
-    let inspected: InspectedSchool;
-    try {
-      inspected = await this.inspect(withSchoolWeek(timetableUrl, week), signal);
-    } catch (error) {
-      if (error instanceof AppError && error.code === "TIMETABLE_NOT_FOUND") {
-        throw new AppError(400, "DATE_NOT_IN_TIMETABLE", "Za izbrani datum urnik ni na voljo.");
+    const parsedUrl = parsePublicTimetableUrl(timetableUrl);
+    const inspected = await this.inspect(parsedUrl.url, signal);
+    let targetMetadata = {
+      dates: inspected.inspection.dates,
+      periods: inspected.inspection.periods,
+    };
+    if (!targetMetadata.dates.includes(date)) {
+      const seed = await this.fetchPage(parsedUrl.url, signal);
+      const targetUrl = ajaxTimetableUrl(seed.html, seed.responseUrl, week);
+      if (!targetUrl) {
+        throw new AppError(502, "AJAX_CONFIG_NOT_FOUND", "eAsistent ni razkril poti do izbranega tedna.");
       }
-      throw error;
-    }
-    const period = inspected.inspection.periods.find((item) => item.number === periodNumber);
-    if (!inspected.inspection.dates.includes(date) || !period) {
-      if (!inspected.inspection.dates.includes(date)) {
-        throw new AppError(400, "DATE_NOT_IN_TIMETABLE", "Za izbrani datum urnik ni na voljo.");
+      try {
+        const targetPage = await this.fetchAjaxPage(targetUrl, seed.responseUrl, signal);
+        targetMetadata = parseScheduleMetadata(targetPage.html);
+      } catch (error) {
+        if (error instanceof AppError && error.code === "TIMETABLE_NOT_FOUND") {
+          throw new AppError(400, "DATE_NOT_IN_TIMETABLE", "Za izbrani datum urnik ni na voljo.");
+        }
+        throw error;
       }
-      throw new AppError(400, "INVALID_SLOT", "Šolska ura ni del naloženega urnika.");
     }
+    if (!targetMetadata.dates.includes(date)) {
+      throw new AppError(400, "DATE_NOT_IN_TIMETABLE", "Za izbrani datum urnik ni na voljo.");
+    }
+    const period = targetMetadata.periods.find((item) => item.number === periodNumber);
+    if (!period) throw new AppError(400, "INVALID_SLOT", "Šolska ura ni del naloženega urnika.");
 
     const states = await mapWithConcurrency(inspected.classrooms, 6, async (room) => {
       try {
-        const page = await this.fetchPage(withSchoolWeek(room.url, week), signal);
+        const publicPage = await this.fetchPage(room.url, signal);
+        const targetUrl = ajaxTimetableUrl(publicPage.html, publicPage.responseUrl, week);
+        const page = targetUrl
+          ? await this.fetchAjaxPage(targetUrl, publicPage.responseUrl, signal)
+          : publicPage;
         return { room, state: roomAvailability(page.html, date, periodNumber) };
       } catch (error) {
         if (signal?.aborted) throw error;
@@ -205,6 +222,19 @@ export class EasistentService {
     if (existing) return existing;
     const promise = this.fetchPageUncached(parsed.url, signal).finally(() => this.#inflight.delete(parsed.url));
     this.#inflight.set(parsed.url, promise);
+    return promise;
+  }
+
+  private async fetchAjaxPage(url: string, referer: string, signal?: AbortSignal): Promise<PageResult> {
+    const refererSchool = parsePublicTimetableUrl(referer);
+    const validatedUrl = validateAjaxTimetableUrl(url, refererSchool.schoolToken);
+    const cached = this.pageCache.get(validatedUrl);
+    if (cached) return cached;
+    const existing = this.#inflight.get(validatedUrl);
+    if (existing) return existing;
+    const promise = this.fetchAjaxPageUncached(validatedUrl, referer, refererSchool.schoolToken, signal)
+      .finally(() => this.#inflight.delete(validatedUrl));
+    this.#inflight.set(validatedUrl, promise);
     return promise;
   }
 
@@ -240,14 +270,45 @@ export class EasistentService {
     throw new AppError(502, "UPSTREAM_REDIRECT", "eAsistent je vrnil preveč preusmeritev.");
   }
 
-  private async fetchWithRetry(url: string, parentSignal?: AbortSignal): Promise<Response> {
+  private async fetchAjaxPageUncached(
+    initialUrl: string,
+    referer: string,
+    schoolToken: string,
+    parentSignal?: AbortSignal,
+  ): Promise<PageResult> {
+    let current = initialUrl;
+    for (let redirects = 0; redirects <= 3; redirects += 1) {
+      validateAjaxTimetableUrl(current, schoolToken);
+      const response = await this.fetchWithRetry(current, parentSignal, {
+        Referer: referer,
+        "X-Requested-With": "XMLHttpRequest",
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) throw new AppError(502, "UPSTREAM_REDIRECT", "eAsistent je vrnil neveljavno preusmeritev.");
+        current = new URL(location, current).href;
+        validateAjaxTimetableUrl(current, schoolToken);
+        continue;
+      }
+      if (response.status === 404 || response.status === 410) {
+        throw new AppError(404, "TIMETABLE_NOT_FOUND", "Javni urnik ne obstaja več.", response.status);
+      }
+      const value = await readHtmlResponse(response, current);
+      this.pageCache.set(initialUrl, value);
+      this.pageCache.set(current, value);
+      return value;
+    }
+    throw new AppError(502, "UPSTREAM_REDIRECT", "eAsistent je vrnil preveč preusmeritev.");
+  }
+
+  private async fetchWithRetry(url: string, parentSignal?: AbortSignal, extraHeaders: Record<string, string> = {}): Promise<Response> {
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
       const timeout = AbortSignal.timeout(10_000);
       const signal = parentSignal ? AbortSignal.any([parentSignal, timeout]) : timeout;
       try {
         const response = await this.fetcher(url, {
           method: "GET",
-          headers: { Accept: "text/html", "User-Agent": "ProsteUcilnice/1.0" },
+          headers: { Accept: "text/html", "User-Agent": "ProsteUcilnice/1.0", ...extraHeaders },
           redirect: "manual",
           signal,
         });
@@ -273,18 +334,34 @@ export class EasistentService {
   }
 }
 
-function withSchoolWeek(value: string, week: number): string {
-  const url = new URL(value);
-  url.searchParams.set("teden", String(week));
+function validateAjaxTimetableUrl(value: string, expectedSchoolToken: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new AppError(502, "INVALID_UPSTREAM_URL", "eAsistent je podal neveljavno notranjo povezavo.");
+  }
+  const match = url.pathname.match(AJAX_PATH_PATTERN);
+  if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname) ||
+    match?.[1]?.toLowerCase() !== expectedSchoolToken.toLowerCase()) {
+    throw new AppError(502, "INVALID_UPSTREAM_URL", "eAsistent je podal nedovoljeno notranjo povezavo.");
+  }
+  url.search = "";
+  url.hash = "";
   return url.href;
 }
 
-function inheritSchoolWeek(value: string, source: string): string {
-  const week = new URL(source).searchParams.get("teden");
-  if (!week) return value;
-  const url = new URL(value);
-  url.searchParams.set("teden", week);
-  return url.href;
+async function readHtmlResponse(response: Response, responseUrl: string): Promise<PageResult> {
+  if (!response.ok) throw new AppError(502, "UPSTREAM_STATUS", `eAsistent je vrnil HTTP ${response.status}.`, response.status);
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("text/html")) {
+    throw new AppError(502, "UPSTREAM_TYPE", "eAsistent ni vrnil HTML-strani.");
+  }
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_HTML_SIZE) throw new AppError(502, "UPSTREAM_SIZE", "Odgovor eAsistenta je prevelik.");
+  const html = await response.text();
+  if (html.length > MAX_HTML_SIZE) throw new AppError(502, "UPSTREAM_SIZE", "Odgovor eAsistenta je prevelik.");
+  return { html, responseUrl };
 }
 
 function validDateParts(value: string): { year: number; month: number; day: number } | null {

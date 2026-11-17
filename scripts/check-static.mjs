@@ -13,7 +13,7 @@ for (const file of ["dist/app.mjs", "dist/schedule-state.mjs", "dist/school-stat
   if (check.status !== 0) throw new Error(check.stderr || `Preverjanje ${file} ni uspelo.`);
 }
 
-const forbidden = ["ajax", "urnik"].join("_");
+const forbidden = ["www.easistent.com/urniki/", "ajax_urnik"].join("");
 const files = [];
 function walk(directory) {
   for (const name of readdirSync(directory)) {

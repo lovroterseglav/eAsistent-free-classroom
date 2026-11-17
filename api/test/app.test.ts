@@ -5,10 +5,12 @@ import { INITIAL_SCHOOL, SchoolCatalog, timetableUrlForToken } from "../src/cata
 import { EasistentService, parsePublicTimetableUrl, type UpstreamFetcher } from "../src/easistent.js";
 import {
   CLASS_PAGE,
+  ROOM_ONE_AJAX_URL,
   ROOM_CANCELLED_PAGE,
   ROOM_FREE_PAGE,
   ROOM_INDEX_PAGE,
   ROOM_ONE_URL,
+  ROOM_TWO_AJAX_URL,
   ROOM_TWO_URL,
   SCHOOL_ROOT,
   SCHOOL_URL,
@@ -23,6 +25,8 @@ function service(): EasistentService {
     [SCHOOL_URL, CLASS_PAGE],
     [ROOM_ONE_URL, ROOM_INDEX_PAGE],
     [ROOM_TWO_URL, ROOM_CANCELLED_PAGE],
+    [ROOM_ONE_AJAX_URL, ROOM_FREE_PAGE],
+    [ROOM_TWO_AJAX_URL, ROOM_CANCELLED_PAGE],
   ]);
   const fetcher: UpstreamFetcher = async (input) => {
     const requestedUrl = String(input);
@@ -76,6 +80,28 @@ test("availability returns free rooms", async () => {
   assert.equal(result.statusCode, 200);
   assert.deepEqual(result.json().rooms.free.map((room: { name: string }) => room.name), ["1", "11"]);
   assert.equal(catalog.get(INITIAL_SCHOOL.token)?.name, "Gimnazija Kranj");
+  await app.close();
+});
+
+test("current-week availability falls back to public room pages without AJAX configuration", async () => {
+  const stripAjaxConfig = (html: string): string => html.replace(/\s*<script>const timetableUrl = [^<]+<\/script>/g, "");
+  const pages = new Map([
+    [SCHOOL_URL, stripAjaxConfig(CLASS_PAGE)],
+    [ROOM_ONE_URL, stripAjaxConfig(ROOM_INDEX_PAGE)],
+    [ROOM_TWO_URL, stripAjaxConfig(ROOM_CANCELLED_PAGE)],
+  ]);
+  const fetcher: UpstreamFetcher = async (input) => {
+    const page = pages.get(String(input));
+    return page ? response(page) : new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
+  };
+  const app = await buildApp({ service: new EasistentService(fetcher, undefined, undefined, () => "2026-11-17") });
+  const result = await app.inject({
+    method: "POST",
+    url: "/api/v1/availability",
+    payload: { timetableUrl: SCHOOL_URL, date: "2026-11-17", period: 1 },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(result.json().rooms.free.map((room: { name: string }) => room.name), ["1", "11"]);
   await app.close();
 });
 

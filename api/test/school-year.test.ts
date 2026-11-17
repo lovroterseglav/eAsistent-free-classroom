@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EasistentService, schoolWeekNumber, schoolYearBounds, type UpstreamFetcher } from "../src/easistent.js";
-import { CLASS_PAGE, ROOM_INDEX_PAGE, ROOM_ONE_URL, SCHOOL_URL } from "./fixtures/timetables.js";
+import {
+  CLASS_AJAX_URL,
+  CLASS_PAGE,
+  ROOM_CANCELLED_PAGE,
+  ROOM_INDEX_PAGE,
+  ROOM_ONE_AJAX_URL,
+  ROOM_ONE_URL,
+  ROOM_TWO_AJAX_URL,
+  ROOM_TWO_URL,
+  SCHOOL_URL,
+  pageForDate,
+} from "./fixtures/timetables.js";
 
 function response(html: string): Response {
   return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
@@ -19,21 +30,35 @@ test("calculates formal school-year bounds and school week numbers", () => {
 });
 
 test("requests the target school week for the school and every classroom", async () => {
-  const requested: string[] = [];
-  const fetcher: UpstreamFetcher = async (input) => {
-    const url = new URL(String(input));
-    requested.push(url.href);
-    const base = new URL(url);
-    base.searchParams.delete("teden");
-    if (base.href === SCHOOL_URL) return response(CLASS_PAGE.replaceAll("2026-11-17", "2026-11-27"));
-    if (base.href === ROOM_ONE_URL) return response(ROOM_INDEX_PAGE.replaceAll("2026-11-17", "2026-11-27"));
-    return response(ROOM_INDEX_PAGE.replaceAll("2026-11-17", "2026-11-27"));
+  const requested: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const targetClassUrl = CLASS_AJAX_URL.replace("/12/0/1", "/13/0/1");
+  const targetRoomOneUrl = ROOM_ONE_AJAX_URL.replace("/12/0/1", "/13/0/1");
+  const targetRoomTwoUrl = ROOM_TWO_AJAX_URL.replace("/12/0/1", "/13/0/1");
+  const pages = new Map([
+    [SCHOOL_URL, CLASS_PAGE],
+    [ROOM_ONE_URL, ROOM_INDEX_PAGE],
+    [ROOM_TWO_URL, ROOM_CANCELLED_PAGE],
+    [targetClassUrl, pageForDate("2026-11-27")],
+    [targetRoomOneUrl, pageForDate("2026-11-27")],
+    [targetRoomTwoUrl, pageForDate("2026-11-27", true)],
+  ]);
+  const fetcher: UpstreamFetcher = async (input, init) => {
+    const url = String(input);
+    requested.push({ url, init });
+    const page = pages.get(url);
+    return page ? response(page) : new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
   };
   const service = new EasistentService(fetcher, undefined, undefined, () => "2026-11-17");
   const result = await service.availability(SCHOOL_URL, "2026-11-27", 1);
   assert.equal(result.date, "2026-11-27");
-  assert.ok(requested.length >= 3);
-  assert.ok(requested.every((url) => new URL(url).searchParams.get("teden") === "13"));
+  assert.deepEqual(result.rooms.free.map(({ name }) => name), ["1"]);
+  assert.equal(result.rooms.occupiedCount, 1);
+  const ajaxRequests = requested.filter(({ url }) => url.includes("/ajax_urnik/"));
+  assert.equal(ajaxRequests.length, 3);
+  assert.ok(ajaxRequests.every(({ url }) => url.includes("/13/0/1") && !new URL(url).search));
+  assert.ok(ajaxRequests.every(({ init }) => init?.method === "GET"));
+  assert.ok(ajaxRequests.every(({ init }) => new Headers(init?.headers).get("X-Requested-With") === "XMLHttpRequest"));
+  assert.ok(ajaxRequests.every(({ init }) => !new Headers(init?.headers).has("Cookie")));
 });
 
 test("rejects invalid, out-of-year, and missing timetable dates", async () => {
