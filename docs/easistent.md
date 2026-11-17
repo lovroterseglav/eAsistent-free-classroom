@@ -29,24 +29,65 @@ Izbrani teden pridobi kot HTML-fragment prek poti:
 /urniki/ajax_urnik/{žeton}/{id_razred}/{id_profesor}/{id_dijak}/{id_ucilnica}/{teden}/{id_interesna_dejavnost}/{qversion}
 ```
 
-Preverjena zahteva za 13. šolski teden je imela obliko:
+### Segmenti poti `ajax_urnik`
+
+Vrstni red segmentov je pomemben; vseh osem vrednosti za `ajax_urnik` je del poti in ne query stringa:
+
+| Položaj | Ime | Preverjen pomen |
+| --- | --- | --- |
+| 1 | `žeton` | 40-mestni šestnajstiški žeton šole iz javnega URL-ja |
+| 2 | `id_razred` | notranji ID izbranega razreda ali `0` |
+| 3 | `id_profesor` | notranji ID izbranega profesorja ali `0` |
+| 4 | `id_dijak` | notranji ID izbranega dijaka ali `0` |
+| 5 | `id_ucilnica` | notranji ID izbrane učilnice ali `0` |
+| 6 | `teden` | zaporedna številka tedna šolskega leta |
+| 7 | `id_interesna_dejavnost` | notranji ID interesne dejavnosti ali `0` |
+| 8 | `qversion` | različica poizvedbe, na preverjenih straneh `1` |
+
+Projekt sprejme `teden` od 1 do 60. Teden 1 je ponedeljek–nedelja, ki vsebuje 1. september. Zato je na primer `2026-11-27` v šolskem tednu 13, čeprav je to 48. koledarski ISO-teden.
+
+Preverjena zahteva za razred in 13. šolski teden je imela obliko:
 
 ```text
 /urniki/ajax_urnik/56149a5b3eb5cbefdaf9c9ded39a80c8c31d8f33/815595/0/0/0/13/0/1
 ```
 
-Notranji ID razreda `815595` ni enak javnemu ID-ju razreda `748283`. API zato notranjih ID-jev ne izpeljuje iz javnih, ampak pot ali posamezne vrednosti prebere iz HTML-ja konkretnega javnega urnika. Zamenja samo segment `teden`.
+Za učilnico z notranjim ID-jem `9123` je ista struktura:
+
+```text
+/urniki/ajax_urnik/56149a5b3eb5cbefdaf9c9ded39a80c8c31d8f33/0/0/0/9123/13/0/1
+```
+
+Notranji ID razreda `815595` ni enak javnemu ID-ju razreda `748283`; enako javni ID učilnice v poti `/ucilnice/{javni-id}` ni nujno njen `id_ucilnica`. API teh vrednosti ne ugiba ali pretvarja.
+
+### Odkritje notranjih vrednosti
+
+Projekt konfiguracijo odkrije neposredno v HTML-ju javne strani razreda ali učilnice na enega od dveh preverjenih načinov:
+
+1. Poišče že sestavljeno pot `/urniki/ajax_urnik/...`. Pred iskanjem pretvori JavaScript zapis `\/` nazaj v `/`, preveri žeton šole in zamenja samo segment `teden`.
+2. Če sestavljene poti ni, prebere številske JavaScript vrednosti `id_razred`, `id_profesor`, `id_dijak`, `id_ucilnica`, `id_interesna_dejavnost` in `qversion`, nato pot sestavi v vrstnem redu iz zgornje tabele. Manjkajoči ID filtra postane `0`, manjkajoči `qversion` pa `1`.
+
+Pri strani razreda mora biti prisoten `id_razred`, pri posamezni strani učilnice pa `id_ucilnica`. Vsaj eden od prvih štirih notranjih ID-jev mora biti različen od `0`. Žeton v odkriti poti se mora ujemati z žetonom iz javne izvorne strani, sicer se pot zavrne.
+
+### HTTP zahteva
 
 Zahteva za fragment dodatno vsebuje:
 
 ```http
+GET /urniki/ajax_urnik/{žeton}/{id_razred}/{id_profesor}/{id_dijak}/{id_ucilnica}/{teden}/{id_interesna_dejavnost}/{qversion} HTTP/1.1
+Accept: text/html
+User-Agent: ProsteUcilnice/1.0
 Referer: https://urniki.easistent.com/urniki/{žeton}/...
 X-Requested-With: XMLHttpRequest
 ```
 
-Gre za `GET`; telo, prijava, sejni piškotek, glava `Tab-Unique-Name` in parameter `_` niso uporabljeni. `qversion` se prebere iz strani, če manjka pa je privzeta vrednost `1`.
+Gre za `GET` brez telesa. Prijava, sejni piškotek, glava `Tab-Unique-Name`, parameter `_` in drugi query parametri niso uporabljeni. Pred pošiljanjem projekt odstrani morebiten query string in fragment iz odkrite AJAX povezave.
 
-Vse zahteve uporabljajo HTTPS in gostitelja `urniki.easistent.com`. API sprejme največ tri preusmeritve in vsako ciljno povezavo ponovno preveri, preden ji sledi. Posamezna zahteva ima desetsekundno omejitev, HTML-odgovor pa je omejen na 2 MiB.
+### Odgovor in napake
+
+Odgovor je HTML-fragment (`Content-Type: text/html`), ne JSON. Vsebuje isto strukturo glav ur in celic kot javna stran: `th#urnik-ura-{ura}` ter `td#ednevnik-seznam_ur_teden-td-{ura}-{YYYY-MM-DD}`. Projekt najprej preveri, ali zahtevani datum in ura v fragmentu obstajata, nato v ustrezni celici vsake učilnice išče bloke zasedenosti.
+
+Začasne omrežne napake in odgovore 429, 502, 503 ali 504 ponovi trikrat po 250 ms, 500 ms in 1.000 ms. Odgovorov 404 in 410 ne ponavlja. Posamezen poskus ima desetsekundno omejitev; sprejeti so največ trije preusmeritveni koraki in največ 2 MiB HTML-ja. Vsaka preusmeritev mora ostati na dovoljenem eAsistent gostitelju, uporabljati HTTPS, ohraniti obliko `ajax_urnik` in isti žeton šole.
 
 ## Potek
 
