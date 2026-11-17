@@ -39,7 +39,11 @@
           <div class="date-control">
             <input id="date-input" name="date" type="text" inputmode="numeric" autocomplete="off"
               placeholder="DD/MM/YYYY" aria-describedby="date-format" disabled required>
-            <button id="date-picker-button" class="date-picker-button" type="button" aria-label="Odpri koledar" title="Odpri koledar" disabled>▦</button>
+            <button id="date-picker-button" class="date-picker-button" type="button" aria-label="Odpri koledar" title="Odpri koledar" disabled>
+              <svg class="calendar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M7 3v3M17 3v3M4.5 9.5h15M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"></path>
+              </svg>
+            </button>
             <input id="date-picker" class="visually-hidden" type="date" tabindex="-1" aria-hidden="true" disabled>
           </div>
           <small id="date-format" class="visually-hidden">Oblika datuma: DD/MM/YYYY</small>

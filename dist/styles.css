@@ -51,14 +51,16 @@ input:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .date-control { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .date-picker-button {
+  display: grid;
+  place-items: center;
   width: 46px;
   min-height: 46px;
   padding: 0;
   border: 1px solid #cbd2cd;
   color: #165c45;
   background: #e6eee9;
-  font-size: 1.15rem;
 }
+.calendar-icon { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .date-picker-button:focus-visible { outline: 3px solid #cce5d8; }
 
 .school-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
