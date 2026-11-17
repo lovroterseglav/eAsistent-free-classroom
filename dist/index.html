@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="sl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Poišči proste učilnice iz javnega urnika eAsistent.">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+    <title>Proste učilnice</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.mjs"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Proste učilnice</h1>
+        <p>Izberi šolo, datum in uro.</p>
+      </header>
+
+      <form id="search-form" class="search-form">
+        <div class="school-field">
+          <label for="school-search">Šola</label>
+          <div class="school-row">
+            <div class="school-combobox">
+              <input id="school-search" type="search" role="combobox" autocomplete="off" spellcheck="false"
+                aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="school-options"
+                placeholder="Poišči šolo">
+              <button id="school-toggle" class="school-toggle" type="button" aria-label="Prikaži šole" tabindex="-1">⌄</button>
+              <div id="school-options" class="school-options" role="listbox" hidden></div>
+            </div>
+            <button id="favorite-button" class="favorite-button" type="button" aria-pressed="false"
+              aria-label="Nastavi kot privzeto šolo" title="Nastavi kot privzeto šolo" disabled>☆</button>
+          </div>
+        </div>
+        <label>
+          <span>Datum</span>
+          <select id="date-select" name="date" disabled required>
+            <option value="">Nalaganje …</option>
+          </select>
+        </label>
+        <label>
+          <span>Šolska ura</span>
+          <select id="period-select" name="period" disabled required>
+            <option value="">Nalaganje …</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="search-button" class="primary-button" type="submit" disabled>Poišči</button>
+          <button id="now-button" class="secondary-button" type="button">Zdaj</button>
+        </div>
+      </form>
+
+      <details class="add-school">
+        <summary>Dodaj šolo</summary>
+        <form id="add-school-form" class="url-form">
+          <label for="school-url">Povezava do javnega urnika</label>
+          <div class="url-row">
+            <input id="school-url" name="url" type="url" inputmode="url" autocomplete="url" placeholder="https://urniki.easistent.com/urniki/…" required>
+            <button class="secondary-button" type="submit">Dodaj</button>
+          </div>
+        </form>
+      </details>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+
+      <section id="results-section" class="results" aria-labelledby="results-heading" hidden>
+        <div class="results-title">
+          <h2 id="results-heading">Proste učilnice</h2>
+          <div id="result-meta"></div>
+        </div>
+        <div id="free-summary" class="free-summary"></div>
+        <div id="room-list" class="room-list"></div>
+        <details id="unknown-section" class="unknown-section" hidden>
+          <summary id="unknown-summary">Ni bilo mogoče preveriti</summary>
+          <ul id="unknown-list"></ul>
+        </details>
+      </section>
+
+      <a id="source-link" class="source-link" href="https://urniki.easistent.com" target="_blank" rel="noreferrer">Izvorni urnik</a>
+    </main>
+  </body>
+</html>

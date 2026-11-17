@@ -1,0 +1,5 @@
+api/build/
+api/node_modules/
+.data/
+.env
+*.tar.gz
