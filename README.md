@@ -1,37 +1,53 @@
 # Free Classrooms
 
-A simple website for finding available classrooms in a public eAsistent timetable. The browser calls the project's Fastify API on the same domain, and the API reads the public timetable pages. This means the browser does not need direct CORS access to `urniki.easistent.com`.
+A small website for finding available classrooms in a public eAsistent timetable. FastAPI serves the existing browser interface and reads eAsistent's public timetable pages asynchronously, so the browser never needs direct CORS access to `urniki.easistent.com`.
 
 The verified public request and HTML structure is documented in [docs/easistent.md](docs/easistent.md).
 
-## Local development and testing
+## Local development
 
-Node.js 22 or newer and npm are required.
-
-```sh
-npm --prefix api ci
-npm test
-```
-
-This checks the JavaScript client, compiles the TypeScript API, and runs the parser and HTTP endpoint tests.
-
-Start the complete website locally with:
+Python 3.11 or newer is required.
 
 ```sh
-npm run dev
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+./dev.sh
 ```
 
-Open `http://localhost:8080`. A single process serves the `dist` directory and the `/api` routes on the same port. Docker and Nginx are not required for local development.
+Open `http://127.0.0.1:8080`. The single FastAPI process serves both the website and `/api` routes; Docker and Nginx are not needed for development.
+
+Run the tests with:
+
+```sh
+venv/bin/python -m unittest discover -s tests -v
+```
+
+## Production
+
+Install dependencies in a virtual environment, set `SCHOOL_CATALOG_PATH` to a persistent writable file, and run one async worker:
+
+```sh
+SCHOOL_CATALOG_PATH=/opt/fileserver/eAsistent-free-classroom/schools.json \
+venv/bin/gunicorn --bind 127.0.0.1:3100 --workers 1 \
+  --worker-class uvicorn_worker.UvicornWorker --timeout 90 web:app
+```
+
+Use a reverse proxy for public HTTPS. Keep one worker because admission control, caches, and the school catalog are process-local. One worker admits up to 25 simultaneous availability searches, runs at most 32 eAsistent requests globally, and runs at most six classroom requests for each search.
+
+The server accepts these optional environment variables:
+
+- `SCHOOL_CATALOG_PATH`: persistent school-catalog file; defaults to `.data/schools.json`.
+- `HOST` and `PORT`: development-server address used by `dev.sh`; defaults to `127.0.0.1:8080`.
 
 ## API
 
-All responses are JSON. Requests are limited to 30 per minute for each IP address.
+All API errors use the JSON envelope `{ "v": 1, "error": { "code": "...", "message": "..." } }`. Non-health API requests are limited to 30 per minute for each IP address.
 
 ### School catalog
 
 `GET /api/v1/schools`
 
-Returns the combined list of schools that the server has successfully verified. After a successful request, a new school is stored by its token and its root URL is constructed as `https://urniki.easistent.com/urniki/TOKEN`. Duplicate tokens are not added. A permanently unavailable school is removed only after a 404 or 410 response from its root URL; transient network failures do not remove it.
+Returns schools bundled with the project and schools that the server has successfully verified. A new school is stored by token, with its root URL constructed as `https://urniki.easistent.com/urniki/TOKEN`. A permanently unavailable school is removed only after a 404 or 410 response; transient failures do not remove it.
 
 ### Inspect a school
 
@@ -43,7 +59,7 @@ Returns the combined list of schools that the server has successfully verified. 
 }
 ```
 
-Returns the normalized school, available dates and periods, and the number of discovered classrooms.
+Returns the normalized school, available dates and periods, and discovered classroom count.
 
 ### Available classrooms
 
@@ -57,12 +73,12 @@ Returns the normalized school, available dates and periods, and the number of di
 }
 ```
 
-Returns confirmed available classrooms, classrooms with an unknown state, and the number of occupied classrooms. The date may be any valid day in the current school year; the API converts it into eAsistent's sequential school-week number. An unknown state is intentionally never counted as available.
+Returns confirmed available classrooms, classrooms whose state could not be verified, and the occupied count. Dates use ISO `YYYY-MM-DD` in the API; the interface displays `DD/MM/YYYY`. Unknown classrooms are never reported as available.
 
-For a transient network failure, timeout, or HTTP 429/502/503/504 response, the API retries the request three times after delays of 250 ms, 500 ms, and 1,000 ms. It does not retry 404 or 410 responses.
+For a transient network failure, timeout, or HTTP 429/502/503/504 response, the service retries three times after 250 ms, 500 ms, and 1,000 ms. It does not retry HTTP 404 or 410.
 
 ## Compatibility verification
 
-The repository contains tests based on local HTML fixtures and tests for the complete API endpoints. On November 17, 2026, both endpoints were also run against the listed live Gimnazija Kranj timetable: inspection found 43 classrooms, and the availability calculation checked all 43 classroom pages without unknown results.
+The test suite covers parsing, request construction, retries, classroom concurrency, the 25-search admission limit, catalog persistence, and HTTP endpoints using local fixtures. On November 17, 2026, the implementation was also checked against the listed Gimnazija Kranj timetable: inspection found 43 classrooms and availability checked all 43 without unknown results.
 
-The public HTML is not an officially documented API and may change. Run the tests after every deployment and verify `/api/v1/health`.
+The public HTML is not an officially documented API and may change. Run the tests after every deployment and verify `GET /api/v1/health`.

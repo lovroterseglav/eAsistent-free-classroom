@@ -1,5 +1,9 @@
-api/build/
-api/node_modules/
 .data/
 .env
+__pycache__/
+.venv/
+venv/
+*.py[cod]
+.coverage
+.pytest_cache/
 *.tar.gz

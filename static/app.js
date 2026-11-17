@@ -6,13 +6,13 @@ import {
   normalizeSchool,
   normalizeSearch,
   tokenFromTimetableUrl,
-} from "./school-state.mjs";
+} from "./school-state.js";
 import {
   chooseInitialSchedule,
   formatDateValue,
   localClock,
   parseDateValue,
-} from "./schedule-state.mjs";
+} from "./schedule-state.js";
 
 const LEGACY_STORAGE_KEY = "proste-ucilnice.schools.v1";
 const FAVORITE_STORAGE_KEY = "proste-ucilnice.favorite-school.v1";

@@ -97,7 +97,13 @@ Transient network failures and HTTP 429, 502, 503, or 504 responses are retried 
 4. The class fragment confirms that the requested date and period exist in the target week.
 5. For each classroom, the API discovers its internal ID from its public page and retrieves the target-week fragment, with at most six classroom requests running concurrently.
 6. If the internal configuration is missing, the current week can still use the public page HTML.
-7. Results are cached in memory for five minutes. The cache holds at most 500 pages.
+7. Public HTML pages are cached for five minutes, up to 1,500 pages or 128 MiB. School inspections are cached for five minutes and availability results for 30 seconds. Concurrent requests for the same page share one upstream request.
+
+## Service limits
+
+The async service admits at most 25 availability searches at once. Each search runs no more than six classroom lookups concurrently, while a process-wide semaphore limits all eAsistent requests to 32. A search has a 60-second overall deadline. HTML parsing runs in a bounded pool of eight worker threads so it does not block other requests.
+
+When all 25 search slots are occupied, the API returns HTTP 503 with `SERVER_BUSY` and `Retry-After: 5`. These limits and caches are process-local, so the documented production setup uses one async worker.
 
 The live test found 43 classrooms on the collection page and successfully retrieved all 43 classroom pages.
 
