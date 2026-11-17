@@ -34,10 +34,16 @@
               aria-label="Nastavi kot privzeto šolo" title="Nastavi kot privzeto šolo" disabled>☆</button>
           </div>
         </div>
-        <label>
-          <span>Datum</span>
-          <input id="date-input" name="date" type="date" disabled required>
-        </label>
+        <div>
+          <label class="field-label" for="date-input">Datum</label>
+          <div class="date-control">
+            <input id="date-input" name="date" type="text" inputmode="numeric" autocomplete="off"
+              placeholder="DD/MM/YYYY" aria-describedby="date-format" disabled required>
+            <button id="date-picker-button" class="date-picker-button" type="button" aria-label="Odpri koledar" title="Odpri koledar" disabled>▦</button>
+            <input id="date-picker" class="visually-hidden" type="date" tabindex="-1" aria-hidden="true" disabled>
+          </div>
+          <small id="date-format" class="visually-hidden">Oblika datuma: DD/MM/YYYY</small>
+        </div>
         <div class="period-field">
           <span id="period-label" class="field-label">Šolska ura</span>
           <details id="period-dropdown" class="choice-dropdown" data-disabled>

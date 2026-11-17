@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chooseInitialSchedule, localClock } from "../dist/schedule-state.mjs";
+import {
+  chooseInitialSchedule,
+  formatDateValue,
+  localClock,
+  parseDateValue,
+} from "../dist/schedule-state.mjs";
 
 const periods = [
   { number: 1, startMinute: 430, endMinute: 475 },
@@ -34,4 +39,13 @@ test("treats a period end as exclusive", () => {
 
 test("builds a local browser clock", () => {
   assert.deepEqual(localClock(new Date(2026, 10, 17, 9, 45)), { date: "2026-11-17", minute: 585 });
+});
+
+test("converts valid dates to and from DD/MM/YYYY", () => {
+  assert.equal(formatDateValue("2026-11-27"), "27/11/2026");
+  assert.equal(parseDateValue("27/11/2026"), "2026-11-27");
+  assert.equal(parseDateValue("29/02/2028"), "2028-02-29");
+  assert.equal(parseDateValue("29/02/2027"), null);
+  assert.equal(parseDateValue("2026-11-27"), null);
+  assert.equal(formatDateValue("2026-02-29"), "");
 });

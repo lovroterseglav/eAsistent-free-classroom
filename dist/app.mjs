@@ -7,7 +7,12 @@ import {
   normalizeSearch,
   tokenFromTimetableUrl,
 } from "./school-state.mjs";
-import { chooseInitialSchedule, localClock } from "./schedule-state.mjs";
+import {
+  chooseInitialSchedule,
+  formatDateValue,
+  localClock,
+  parseDateValue,
+} from "./schedule-state.mjs";
 
 const LEGACY_STORAGE_KEY = "proste-ucilnice.schools.v1";
 const FAVORITE_STORAGE_KEY = "proste-ucilnice.favorite-school.v1";
@@ -20,6 +25,8 @@ const elements = {
   schoolOptions: document.querySelector("#school-options"),
   favoriteButton: document.querySelector("#favorite-button"),
   date: document.querySelector("#date-input"),
+  datePicker: document.querySelector("#date-picker"),
+  datePickerButton: document.querySelector("#date-picker-button"),
   periodDropdown: document.querySelector("#period-dropdown"),
   periodSummary: document.querySelector("#period-summary"),
   periodOptions: document.querySelector("#period-options"),
@@ -138,7 +145,7 @@ function setDropdownDisabled(dropdown, disabled) {
 }
 
 function hasValidSelection() {
-  return Boolean(currentSchool && selectedPeriodNumber !== null && elements.date.value && elements.date.checkValidity());
+  return Boolean(currentSchool && selectedPeriodNumber !== null && validateDateInput());
 }
 
 function refreshDisabledState() {
@@ -146,6 +153,8 @@ function refreshDisabledState() {
   setDropdownDisabled(elements.periodDropdown, loading || !currentSchool?.inspection.periods.length);
   elements.schoolSearch.disabled = loading;
   elements.date.disabled = loading || !currentSchool;
+  elements.datePicker.disabled = loading || !currentSchool;
+  elements.datePickerButton.disabled = loading || !currentSchool;
   elements.urlInput.disabled = loading;
   elements.addForm.querySelector("button").disabled = loading;
   elements.searchButton.disabled = loading || !hasValidSelection();
@@ -166,20 +175,42 @@ function clearResults() {
 function clearScheduleControls() {
   selectedPeriodNumber = null;
   elements.date.value = "";
-  elements.date.removeAttribute("min");
-  elements.date.removeAttribute("max");
+  elements.date.dataset.min = "";
+  elements.date.dataset.max = "";
+  elements.date.setCustomValidity("");
+  elements.datePicker.value = "";
+  elements.datePicker.removeAttribute("min");
+  elements.datePicker.removeAttribute("max");
   elements.periodSummary.textContent = "Nalaganje …";
   elements.periodOptions.replaceChildren();
 }
 
 function fillControls(inspection) {
-  elements.date.min = inspection.schoolYear.start;
-  elements.date.max = inspection.schoolYear.end;
+  elements.date.dataset.min = inspection.schoolYear.start;
+  elements.date.dataset.max = inspection.schoolYear.end;
+  elements.datePicker.min = inspection.schoolYear.start;
+  elements.datePicker.max = inspection.schoolYear.end;
   const initial = chooseInitialSchedule(inspection.dates, inspection.periods, localClock());
-  elements.date.value = initial.date;
+  elements.date.value = formatDateValue(initial.date);
+  elements.datePicker.value = initial.date;
   selectedPeriodNumber = initial.periodNumber;
   renderPeriodOptions();
   refreshDisabledState();
+}
+
+function validateDateInput() {
+  elements.date.setCustomValidity("");
+  const date = parseDateValue(elements.date.value);
+  if (!date) {
+    elements.date.setCustomValidity("Vnesi veljaven datum v obliki DD/MM/YYYY.");
+    return null;
+  }
+  if (date < elements.date.dataset.min || date > elements.date.dataset.max) {
+    elements.date.setCustomValidity("Datum ni v trenutnem šolskem letu.");
+    return null;
+  }
+  elements.datePicker.value = date;
+  return date;
 }
 
 function updateSelectedSchool() {
@@ -325,7 +356,8 @@ async function loadSchool(entry, { added = false } = {}) {
 }
 
 async function searchRooms() {
-  if (!hasValidSelection()) return;
+  const requestedDate = validateDateInput();
+  if (!currentSchool || selectedPeriodNumber === null || !requestedDate) return;
   activeController?.abort();
   const controller = new AbortController();
   activeController = controller;
@@ -335,7 +367,7 @@ async function searchRooms() {
   try {
     const result = await apiRequest("/api/v1/availability", {
       timetableUrl: currentSchool.entry.timetableUrl,
-      date: elements.date.value,
+      date: requestedDate,
       period: selectedPeriodNumber,
     }, controller.signal);
     renderResults(result);
@@ -430,8 +462,22 @@ elements.favoriteButton.addEventListener("click", () => {
   setFavoriteToken(favoriteToken() === currentSchool.entry.token ? null : currentSchool.entry.token);
 });
 elements.date.addEventListener("input", refreshDisabledState);
+elements.date.addEventListener("blur", () => {
+  const date = validateDateInput();
+  if (date) elements.date.value = formatDateValue(date);
+});
+elements.datePicker.addEventListener("change", () => {
+  elements.date.value = formatDateValue(elements.datePicker.value);
+  validateDateInput();
+  refreshDisabledState();
+});
+elements.datePickerButton.addEventListener("click", () => {
+  if (typeof elements.datePicker.showPicker === "function") elements.datePicker.showPicker();
+  else elements.datePicker.click();
+});
 elements.searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  validateDateInput();
   if (!elements.date.reportValidity()) return;
   searchRooms();
 });

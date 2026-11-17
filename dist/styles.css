@@ -49,6 +49,18 @@ input {
 input:focus { outline: 3px solid #cce5d8; border-color: #1f7256; }
 input:disabled { opacity: 0.55; cursor: not-allowed; }
 
+.date-control { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.date-picker-button {
+  width: 46px;
+  min-height: 46px;
+  padding: 0;
+  border: 1px solid #cbd2cd;
+  color: #165c45;
+  background: #e6eee9;
+  font-size: 1.15rem;
+}
+.date-picker-button:focus-visible { outline: 3px solid #cce5d8; }
+
 .school-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .choice-dropdown { position: relative; min-width: 0; }
 .choice-dropdown summary {
