@@ -238,7 +238,14 @@ function duplicateNameCounts() {
 }
 
 function renderSchoolOptions() {
-  const visibleSchools = filterSchools(schools, elements.schoolSearch.value, 50, selectedSchool?.token);
+  const storedFavorite = favoriteToken();
+  const visibleSchools = filterSchools(
+    schools,
+    elements.schoolSearch.value,
+    50,
+    selectedSchool?.token,
+    storedFavorite,
+  );
   const nameCounts = duplicateNameCounts();
   elements.schoolOptions.replaceChildren();
   if (!visibleSchools.length) {
@@ -265,6 +272,14 @@ function renderSchoolOptions() {
     const name = document.createElement("span");
     name.textContent = school.name;
     option.append(radio, name);
+    if (school.token === storedFavorite && school.token !== selectedSchool?.token) {
+      const favoriteMarker = document.createElement("span");
+      favoriteMarker.className = "favorite-marker";
+      favoriteMarker.textContent = "★";
+      favoriteMarker.setAttribute("aria-label", "Privzeta šola");
+      favoriteMarker.title = "Privzeta šola";
+      option.append(favoriteMarker);
+    }
     if ((nameCounts.get(normalizeSearch(school.name)) ?? 0) > 1) {
       const suffix = document.createElement("small");
       suffix.textContent = school.token.slice(0, 6);

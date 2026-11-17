@@ -110,6 +110,7 @@ input:disabled { opacity: 0.55; cursor: not-allowed; }
 .choice:has(input:checked) { color: #165c45; background: #f4f8f6; font-weight: 750; }
 .choice input { width: 17px; min-height: 17px; margin: 0; padding: 0; accent-color: #165c45; }
 .choice span { font-size: 0.92rem; }
+.choice .favorite-marker { color: #b27700; font-size: 1rem; line-height: 1; }
 .choice small { margin-left: auto; color: #7a837f; font-weight: 500; }
 .school-empty { margin: 0; padding: 12px 10px; color: #68716d; font-size: 0.88rem; }
 .visually-hidden {

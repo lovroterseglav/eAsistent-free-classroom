@@ -37,12 +37,18 @@ export function mergeSchools(...collections) {
   }));
 }
 
-export function filterSchools(schools, query, limit = 50, preferredToken = null) {
+export function filterSchools(schools, query, limit = 50, selectedToken = null, favoriteToken = null) {
   const normalizedQuery = normalizeSearch(query);
   return schools
     .filter((school) => !normalizedQuery || normalizeSearch(school.name).includes(normalizedQuery))
-    .sort((left, right) => Number(right.token === preferredToken) - Number(left.token === preferredToken))
+    .sort((left, right) => schoolPreference(left) - schoolPreference(right))
     .slice(0, limit);
+
+  function schoolPreference(school) {
+    if (school.token === selectedToken) return 0;
+    if (school.token === favoriteToken) return 1;
+    return 2;
+  }
 }
 
 export function chooseDefaultSchool(schools, favoriteToken, fallbackToken = FALLBACK_TOKEN) {

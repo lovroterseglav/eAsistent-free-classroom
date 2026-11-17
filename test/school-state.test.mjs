@@ -23,6 +23,19 @@ test("search is case and accent insensitive", () => {
   assert.equal(filterSchools(schools, "", 50, otherToken)[0]?.token, otherToken);
 });
 
+test("places the favorite directly after the selected school", () => {
+  const favoriteToken = "b".repeat(40);
+  const ordered = mergeSchools(
+    schools,
+    [{ token: favoriteToken, name: "Osnovna šola Zalog" }],
+  );
+
+  assert.deepEqual(
+    filterSchools(ordered, "", 50, FALLBACK_TOKEN, favoriteToken).map(({ token }) => token),
+    [FALLBACK_TOKEN, favoriteToken, otherToken],
+  );
+});
+
 test("merges by token and constructs stable root URLs", () => {
   const merged = mergeSchools(
     [{ token: otherToken.toUpperCase(), name: "Prvo ime", timetableUrl: "ignored" }],
