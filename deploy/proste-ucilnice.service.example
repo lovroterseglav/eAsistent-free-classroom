@@ -1,17 +1,12 @@
 [Unit]
-Description=Proste ucilnice API
-Wants=network-online.target
+Description=Proste ucilnice web API
 After=network-online.target
+Wants=network-online.target
 
 [Service]
-Type=simple
-User=www-data
-Group=www-data
+User=deploy
 WorkingDirectory=/opt/proste-ucilnice/api
-Environment=NODE_ENV=production
-Environment=HOST=127.0.0.1
-Environment=PORT=3100
-Environment=SCHOOL_CATALOG_PATH=/var/lib/proste-ucilnice/schools.json
+EnvironmentFile=/opt/config/proste-ucilnice/env
 ExecStart=/usr/bin/node build/src/server.js
 Restart=on-failure
 RestartSec=5

@@ -74,7 +74,15 @@ Na strežniku potrebuješ Node.js 22 ali novejši, npm in Nginx. Docker ni potre
    sudo npm --prefix api prune --omit=dev
    ```
 
-2. Namesti in zaženi systemd storitev:
+2. Namesti produkcijske nastavitve. Datoteko lahko pozneje spremeniš brez urejanja systemd enote:
+
+   ```sh
+   sudo install -d -m 0750 -o root -g deploy /opt/config/proste-ucilnice
+   sudo install -m 0640 -o root -g deploy \
+     deploy/proste-ucilnice.env.example /opt/config/proste-ucilnice/env
+   ```
+
+3. Namesti in zaženi systemd storitev:
 
    ```sh
    sudo cp deploy/proste-ucilnice.service.example /etc/systemd/system/proste-ucilnice.service
@@ -83,16 +91,16 @@ Na strežniku potrebuješ Node.js 22 ali novejši, npm in Nginx. Docker ni potre
    curl http://127.0.0.1:3100/api/v1/health
    ```
 
-   Storitev posluša samo na `127.0.0.1:3100`, se po napaki samodejno ponovno zažene in hrani naučeni seznam šol v `/var/lib/proste-ucilnice/schools.json`.
+   Storitev teče kot uporabnik `deploy`, posluša samo na `127.0.0.1:3100`, se po napaki samodejno ponovno zažene in hrani naučeni seznam šol v `/var/lib/proste-ucilnice/schools.json`.
 
-3. Objavi statične datoteke:
+4. Objavi statične datoteke:
 
    ```sh
    sudo mkdir -p /var/www/proste-ucilnice
    sudo cp -a dist/. /var/www/proste-ucilnice/
    ```
 
-4. Kopiraj `deploy/nginx.conf.example` v `/etc/nginx/sites-available/proste-ucilnice`, zamenjaj `classrooms.example.com` s svojo domeno in omogoči konfiguracijo:
+5. Kopiraj `deploy/nginx.conf.example` v `/etc/nginx/sites-available/proste-ucilnice`, zamenjaj `classrooms.example.com` s svojo domeno in omogoči konfiguracijo:
 
    ```sh
    sudo ln -s /etc/nginx/sites-available/proste-ucilnice /etc/nginx/sites-enabled/proste-ucilnice
@@ -100,7 +108,7 @@ Na strežniku potrebuješ Node.js 22 ali novejši, npm in Nginx. Docker ni potre
    sudo systemctl reload nginx
    ```
 
-5. Pred uporabo preveri oba javna endpointa:
+6. Pred uporabo preveri oba javna endpointa:
 
    ```sh
    curl https://TVOJA-DOMENA/api/v1/health
