@@ -57,7 +57,7 @@ Vrne normalizirano šolo, razpoložljive datume in šolske ure ter število najd
 }
 ```
 
-Vrne potrjeno proste učilnice, učilnice z neznanim stanjem in število zasedenih učilnic. Neznano stanje se namenoma ne šteje kot prosto.
+Vrne potrjeno proste učilnice, učilnice z neznanim stanjem in število zasedenih učilnic. Datum je lahko katerikoli veljaven dan trenutnega šolskega leta; API iz njega sestavi eAsistentov zaporedni šolski teden. Neznano stanje se namenoma ne šteje kot prosto.
 
 Pri začasni omrežni napaki, timeoutu ali odgovoru HTTP 429/502/503/504 API zahtevo ponovi trikrat z zamiki 250 ms, 500 ms in 1.000 ms. Odgovorov 404 in 410 ne ponavlja.
 
