@@ -1,39 +1,39 @@
-# Proste učilnice
+# Free Classrooms
 
-Preprosta spletna stran za iskanje prostih učilnic v javnem urniku eAsistent. Brskalnik kliče lasten Fastify API na isti domeni, API pa prebere javne strani urnika. Tako brskalnik ne potrebuje neposrednega CORS-dostopa do `urniki.easistent.com`.
+A simple website for finding available classrooms in a public eAsistent timetable. The browser calls the project's Fastify API on the same domain, and the API reads the public timetable pages. This means the browser does not need direct CORS access to `urniki.easistent.com`.
 
-Preverjena struktura javnih zahtev in HTML-ja je opisana v [docs/easistent.md](docs/easistent.md).
+The verified public request and HTML structure is documented in [docs/easistent.md](docs/easistent.md).
 
-## Lokalno preverjanje
+## Local development and testing
 
-Zahtevana sta Node.js 22 ali novejši in npm.
+Node.js 22 or newer and npm are required.
 
 ```sh
 npm --prefix api ci
 npm test
 ```
 
-Ukaz preveri JavaScript odjemalca, prevede TypeScript API in požene teste razčlenjevalnika ter HTTP endpointov.
+This checks the JavaScript client, compiles the TypeScript API, and runs the parser and HTTP endpoint tests.
 
-Celotno spletno stran lokalno zaženeš z:
+Start the complete website locally with:
 
 ```sh
 npm run dev
 ```
 
-Odpri `http://localhost:8080`. En proces na istih vratih servira mapo `dist` in API-poti `/api`. Docker in Nginx za lokalni razvoj nista potrebna.
+Open `http://localhost:8080`. A single process serves the `dist` directory and the `/api` routes on the same port. Docker and Nginx are not required for local development.
 
 ## API
 
-Vsi odgovori so JSON. Omejitev je 30 zahtev na minuto za posamezen IP.
+All responses are JSON. Requests are limited to 30 per minute for each IP address.
 
-### Seznam šol
+### School catalog
 
 `GET /api/v1/schools`
 
-Vrne skupni seznam šol, ki jih je strežnik že uspešno preveril. Ob uspešni poizvedbi se nova šola shrani po žetonu, njen osnovni URL pa se sestavi kot `https://urniki.easistent.com/urniki/TOKEN`. Podvojeni žetoni se ne dodajajo. Dokončno nedosegljiva šola se odstrani samo ob odgovoru 404 ali 410 na njen osnovni URL; začasne omrežne napake je ne izbrišejo.
+Returns the combined list of schools that the server has successfully verified. After a successful request, a new school is stored by its token and its root URL is constructed as `https://urniki.easistent.com/urniki/TOKEN`. Duplicate tokens are not added. A permanently unavailable school is removed only after a 404 or 410 response from its root URL; transient network failures do not remove it.
 
-### Pregled šole
+### Inspect a school
 
 `POST /api/v1/schools/inspect`
 
@@ -43,9 +43,9 @@ Vrne skupni seznam šol, ki jih je strežnik že uspešno preveril. Ob uspešni 
 }
 ```
 
-Vrne normalizirano šolo, razpoložljive datume in šolske ure ter število najdenih učilnic.
+Returns the normalized school, available dates and periods, and the number of discovered classrooms.
 
-### Proste učilnice
+### Available classrooms
 
 `POST /api/v1/availability`
 
@@ -57,12 +57,12 @@ Vrne normalizirano šolo, razpoložljive datume in šolske ure ter število najd
 }
 ```
 
-Vrne potrjeno proste učilnice, učilnice z neznanim stanjem in število zasedenih učilnic. Datum je lahko katerikoli veljaven dan trenutnega šolskega leta; API iz njega sestavi eAsistentov zaporedni šolski teden. Neznano stanje se namenoma ne šteje kot prosto.
+Returns confirmed available classrooms, classrooms with an unknown state, and the number of occupied classrooms. The date may be any valid day in the current school year; the API converts it into eAsistent's sequential school-week number. An unknown state is intentionally never counted as available.
 
-Pri začasni omrežni napaki, timeoutu ali odgovoru HTTP 429/502/503/504 API zahtevo ponovi trikrat z zamiki 250 ms, 500 ms in 1.000 ms. Odgovorov 404 in 410 ne ponavlja.
+For a transient network failure, timeout, or HTTP 429/502/503/504 response, the API retries the request three times after delays of 250 ms, 500 ms, and 1,000 ms. It does not retry 404 or 410 responses.
 
-## Preverjanje združljivosti
+## Compatibility verification
 
-Repozitorij vsebuje teste z lokalnimi HTML vzorci in teste celotnih API endpointov. Poleg tega sta bila 17. novembra 2026 zagnana oba endpointa proti navedenemu živemu urniku Gimnazije Kranj: pregled je našel 43 učilnic, izračun razpoložljivosti pa je brez neznanih rezultatov preveril vseh 43 strani učilnic.
+The repository contains tests based on local HTML fixtures and tests for the complete API endpoints. On November 17, 2026, both endpoints were also run against the listed live Gimnazija Kranj timetable: inspection found 43 classrooms, and the availability calculation checked all 43 classroom pages without unknown results.
 
-Javni HTML ni uradno opisan API in se lahko spremeni. Po vsaki namestitvi zato poženi teste in preveri `/api/v1/health`.
+The public HTML is not an officially documented API and may change. Run the tests after every deployment and verify `/api/v1/health`.

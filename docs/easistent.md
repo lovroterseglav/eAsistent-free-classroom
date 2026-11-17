@@ -1,145 +1,145 @@
-# Preverjena struktura javnega urnika eAsistent
+# Verified eAsistent public timetable structure
 
-Ta dokument opisuje samo zahteve in HTML-strukturo, ki jih ta projekt dejansko uporablja. Vse spodaj je bilo preverjeno 17. novembra 2026 na javnem urniku Gimnazije Kranj:
+This document describes only the requests and HTML structure that this project actually uses. Everything below was verified on November 17, 2026 against the public Gimnazija Kranj timetable:
 
 ```text
 https://urniki.easistent.com/urniki/56149a5b3eb5cbefdaf9c9ded39a80c8c31d8f33/razredi/748283
 ```
 
-## Zahteve
+## Requests
 
-API pošilja običajne `GET` zahteve za javne HTML-strani z glavama:
+The API sends ordinary `GET` requests for public HTML pages with these headers:
 
 ```http
 Accept: text/html
 User-Agent: ProsteUcilnice/1.0
 ```
 
-Uporabljene poti so:
+The following paths are used:
 
 ```text
-/urniki/{40-znakovni-žeton-šole}/razredi/{id-razreda}
-/urniki/{40-znakovni-žeton-šole}/ucilnice
-/urniki/{40-znakovni-žeton-šole}/ucilnice/{id-učilnice}
+/urniki/{40-character-school-token}/razredi/{class-id}
+/urniki/{40-character-school-token}/ucilnice
+/urniki/{40-character-school-token}/ucilnice/{classroom-id}
 ```
 
-Izbrani teden pridobi kot HTML-fragment prek poti:
+The selected week is retrieved as an HTML fragment through this path:
 
 ```text
-/urniki/ajax_urnik/{žeton}/{id_razred}/{id_profesor}/{id_dijak}/{id_ucilnica}/{teden}/{id_interesna_dejavnost}/{qversion}
+/urniki/ajax_urnik/{school_token}/{id_razred}/{id_profesor}/{id_dijak}/{id_ucilnica}/{week}/{id_interesna_dejavnost}/{qversion}
 ```
 
-### Segmenti poti `ajax_urnik`
+### `ajax_urnik` path segments
 
-Vrstni red segmentov je pomemben; vseh osem vrednosti za `ajax_urnik` je del poti in ne query stringa:
+Segment order matters. All eight `ajax_urnik` values are path segments, not query parameters:
 
-| Položaj | Ime | Preverjen pomen |
+| Position | Name | Verified meaning |
 | --- | --- | --- |
-| 1 | `žeton` | 40-mestni šestnajstiški žeton šole iz javnega URL-ja |
-| 2 | `id_razred` | notranji ID izbranega razreda ali `0` |
-| 3 | `id_profesor` | notranji ID izbranega profesorja ali `0` |
-| 4 | `id_dijak` | notranji ID izbranega dijaka ali `0` |
-| 5 | `id_ucilnica` | notranji ID izbrane učilnice ali `0` |
-| 6 | `teden` | zaporedna številka tedna šolskega leta |
-| 7 | `id_interesna_dejavnost` | notranji ID interesne dejavnosti ali `0` |
-| 8 | `qversion` | različica poizvedbe, na preverjenih straneh `1` |
+| 1 | `school_token` | The 40-character hexadecimal school token from the public URL |
+| 2 | `id_razred` | Internal ID of the selected class, or `0` |
+| 3 | `id_profesor` | Internal ID of the selected teacher, or `0` |
+| 4 | `id_dijak` | Internal ID of the selected student, or `0` |
+| 5 | `id_ucilnica` | Internal ID of the selected classroom, or `0` |
+| 6 | `week` | Sequential school-week number |
+| 7 | `id_interesna_dejavnost` | Internal extracurricular-activity ID, or `0` |
+| 8 | `qversion` | Query version; `1` on the verified pages |
 
-Projekt sprejme `teden` od 1 do 60. Teden 1 je ponedeljek–nedelja, ki vsebuje 1. september. Zato je na primer `2026-11-27` v šolskem tednu 13, čeprav je to 48. koledarski ISO-teden.
+The project accepts `week` values from 1 through 60. Week 1 is the Monday-to-Sunday week containing September 1. For example, `2026-11-27` is in school week 13 even though it is in ISO calendar week 48.
 
-Preverjena zahteva za razred in 13. šolski teden je imela obliko:
+A verified class request for school week 13 had this form:
 
 ```text
 /urniki/ajax_urnik/56149a5b3eb5cbefdaf9c9ded39a80c8c31d8f33/815595/0/0/0/13/0/1
 ```
 
-Za učilnico z notranjim ID-jem `9123` je ista struktura:
+The same structure for a classroom with internal ID `9123` is:
 
 ```text
 /urniki/ajax_urnik/56149a5b3eb5cbefdaf9c9ded39a80c8c31d8f33/0/0/0/9123/13/0/1
 ```
 
-Notranji ID razreda `815595` ni enak javnemu ID-ju razreda `748283`; enako javni ID učilnice v poti `/ucilnice/{javni-id}` ni nujno njen `id_ucilnica`. API teh vrednosti ne ugiba ali pretvarja.
+The internal class ID `815595` is not the same as the public class ID `748283`. Likewise, a classroom's public ID in `/ucilnice/{public-id}` is not necessarily its `id_ucilnica`. The API does not guess or convert these values.
 
-### Odkritje notranjih vrednosti
+### Discovering internal values
 
-Projekt konfiguracijo odkrije neposredno v HTML-ju javne strani razreda ali učilnice na enega od dveh preverjenih načinov:
+The project discovers the configuration directly from the public class or classroom page HTML in one of two verified ways:
 
-1. Poišče že sestavljeno pot `/urniki/ajax_urnik/...`. Pred iskanjem pretvori JavaScript zapis `\/` nazaj v `/`, preveri žeton šole in zamenja samo segment `teden`.
-2. Če sestavljene poti ni, prebere številske JavaScript vrednosti `id_razred`, `id_profesor`, `id_dijak`, `id_ucilnica`, `id_interesna_dejavnost` in `qversion`, nato pot sestavi v vrstnem redu iz zgornje tabele. Manjkajoči ID filtra postane `0`, manjkajoči `qversion` pa `1`.
+1. It finds an already assembled `/urniki/ajax_urnik/...` path. Before searching, it converts the JavaScript escape `\/` back to `/`, verifies the school token, and replaces only the `week` segment.
+2. If no assembled path exists, it reads the numeric JavaScript values `id_razred`, `id_profesor`, `id_dijak`, `id_ucilnica`, `id_interesna_dejavnost`, and `qversion`, then builds the path in the order shown above. A missing filter ID becomes `0`, and a missing `qversion` becomes `1`.
 
-Pri strani razreda mora biti prisoten `id_razred`, pri posamezni strani učilnice pa `id_ucilnica`. Vsaj eden od prvih štirih notranjih ID-jev mora biti različen od `0`. Žeton v odkriti poti se mora ujemati z žetonom iz javne izvorne strani, sicer se pot zavrne.
+A class page must provide `id_razred`, while an individual classroom page must provide `id_ucilnica`. At least one of the first four internal IDs must be different from `0`. A token discovered in the page must match the token from the public source page or the path is rejected.
 
-### HTTP zahteva
+### HTTP request
 
-Zahteva za fragment dodatno vsebuje:
+The fragment request also includes these headers:
 
 ```http
-GET /urniki/ajax_urnik/{žeton}/{id_razred}/{id_profesor}/{id_dijak}/{id_ucilnica}/{teden}/{id_interesna_dejavnost}/{qversion} HTTP/1.1
+GET /urniki/ajax_urnik/{school_token}/{id_razred}/{id_profesor}/{id_dijak}/{id_ucilnica}/{week}/{id_interesna_dejavnost}/{qversion} HTTP/1.1
 Accept: text/html
 User-Agent: ProsteUcilnice/1.0
-Referer: https://urniki.easistent.com/urniki/{žeton}/...
+Referer: https://urniki.easistent.com/urniki/{school_token}/...
 X-Requested-With: XMLHttpRequest
 ```
 
-Gre za `GET` brez telesa. Prijava, sejni piškotek, glava `Tab-Unique-Name`, parameter `_` in drugi query parametri niso uporabljeni. Pred pošiljanjem projekt odstrani morebiten query string in fragment iz odkrite AJAX povezave.
+This is a bodyless `GET` request. Authentication, session cookies, the `Tab-Unique-Name` header, the `_` parameter, and other query parameters are not used. Before sending the request, the project removes any query string or fragment from a discovered AJAX URL.
 
-### Odgovor in napake
+### Response and errors
 
-Odgovor je HTML-fragment (`Content-Type: text/html`), ne JSON. Vsebuje isto strukturo glav ur in celic kot javna stran: `th#urnik-ura-{ura}` ter `td#ednevnik-seznam_ur_teden-td-{ura}-{YYYY-MM-DD}`. Projekt najprej preveri, ali zahtevani datum in ura v fragmentu obstajata, nato v ustrezni celici vsake učilnice išče bloke zasedenosti.
+The response is an HTML fragment (`Content-Type: text/html`), not JSON. It contains the same period-header and timetable-cell structure as the public page: `th#urnik-ura-{period}` and `td#ednevnik-seznam_ur_teden-td-{period}-{YYYY-MM-DD}`. The project first verifies that the requested date and period exist in the fragment, then checks the matching cell for each classroom for occupancy blocks.
 
-Začasne omrežne napake in odgovore 429, 502, 503 ali 504 ponovi trikrat po 250 ms, 500 ms in 1.000 ms. Odgovorov 404 in 410 ne ponavlja. Posamezen poskus ima desetsekundno omejitev; sprejeti so največ trije preusmeritveni koraki in največ 2 MiB HTML-ja. Vsaka preusmeritev mora ostati na dovoljenem eAsistent gostitelju, uporabljati HTTPS, ohraniti obliko `ajax_urnik` in isti žeton šole.
+Transient network failures and HTTP 429, 502, 503, or 504 responses are retried three times after 250 ms, 500 ms, and 1,000 ms. HTTP 404 and 410 responses are not retried. Each attempt has a ten-second timeout. At most three redirects and 2 MiB of HTML are accepted. Every redirect must remain on an allowed eAsistent host, use HTTPS, retain the `ajax_urnik` path structure, and use the same school token.
 
-## Potek
+## Request flow
 
-1. Stran razreda poda ime šole, trenutno prikazane datume, šolske ure in notranjo konfiguracijo zahteve.
-2. Zbirna stran `/ucilnice` poda popoln seznam učilnic.
-3. Datum se pretvori v zaporedni teden šolskega leta; teden, ki vsebuje 1. september, je teden 1.
-4. Fragment razreda potrdi, da izbrani datum in ura v ciljnem tednu obstajata.
-5. Za vsako učilnico API iz njene javne strani odkrije notranji ID in prebere fragment ciljnega tedna, največ šest hkrati.
-6. Če notranja konfiguracija manjka, lahko trenutni teden še vedno uporabi HTML javne strani.
-7. Rezultati se pet minut hranijo v pomnilniku. Predpomnilnik vsebuje največ 500 strani.
+1. The class page provides the school name, currently displayed dates, periods, and internal request configuration.
+2. The `/ucilnice` collection page provides the complete classroom list.
+3. The requested date is converted to the sequential school week; the week containing September 1 is week 1.
+4. The class fragment confirms that the requested date and period exist in the target week.
+5. For each classroom, the API discovers its internal ID from its public page and retrieves the target-week fragment, with at most six classroom requests running concurrently.
+6. If the internal configuration is missing, the current week can still use the public page HTML.
+7. Results are cached in memory for five minutes. The cache holds at most 500 pages.
 
-Živi preizkus je na zbirni strani našel 43 učilnic in nato uspešno prebral vseh 43 strani učilnic.
+The live test found 43 classrooms on the collection page and successfully retrieved all 43 classroom pages.
 
-## Uporabljeni deli HTML-ja
+## HTML elements used
 
-Ime šole:
+School name:
 
 ```css
 .urnik_title
 ```
 
-Učilnice so možnosti v izbirniku `#id_parameter`. Vrednost možnosti je številski ID, besedilo pa prikazano ime učilnice:
+Classrooms are options in the `#id_parameter` selector. An option's value is its numeric ID and its text is the displayed classroom name:
 
 ```css
 #id_parameter option
 ```
 
-Glava šolske ure ima ID `urnik-ura-{številka}`. Časovni razpon je besedilo v njenem elementu `.potek-ure` in ima obliko `HH:MM - HH:MM`:
+A period header has the ID `urnik-ura-{number}`. Its `.potek-ure` element contains a time range in the form `HH:MM - HH:MM`:
 
 ```css
 th[id^="urnik-ura-"] .potek-ure
 ```
 
-Celica urnika za učilnico je določena z uro in datumom:
+A classroom timetable cell is identified by period and date:
 
 ```text
-ednevnik-seznam_ur_teden-td-{številka-ure}-{YYYY-MM-DD}
+ednevnik-seznam_ur_teden-td-{period-number}-{YYYY-MM-DD}
 ```
 
-Elementi `.ednevnik-seznam_ur_teden-blok-wrap` v tej celici predstavljajo zasedenost. Celica brez takih elementov je prosta; manjkajoča celica ima neznano stanje in se nikoli ne prikaže kot prosta.
+Elements matching `.ednevnik-seznam_ur_teden-blok-wrap` inside the cell represent occupancy. A cell without such elements is available. A missing cell has an unknown state and is never reported as available.
 
-## Preverjen primer rezultata
+## Verified result example
 
-Za datum `2026-11-17` in 4. šolsko uro je živi preizkus vrnil:
+For `2026-11-17` and period 4, the live test returned:
 
-- 43 učilnic skupaj,
-- 11 prostih,
-- 32 zasedenih,
-- 0 z neznanim stanjem.
+- 43 classrooms in total,
+- 11 available,
+- 32 occupied,
+- 0 with an unknown state.
 
-To so podatki preizkusa, ne trajen podatek o urniku.
+These are test results, not permanent timetable data.
 
-## Česa projekt ne uporablja
+## Features not used by this project
 
-Projekt ne uporablja prijave, piškotkov, zasebnih uporabniških podatkov ali JSON endpointa. Uporablja samo javne HTML-strani in javni HTML-fragment zgoraj. Ker struktura ni uradno verzionirana API-pogodba, je treba združljivost po namestitvi ponovno preveriti z ukazi v glavnem README-ju.
+The project does not use authentication, cookies, private user data, or a JSON endpoint. It uses only public HTML pages and the public HTML fragment described above. This structure is not an officially versioned API contract, so compatibility must be rechecked after deployment by running the test suite and checking the health endpoint.
