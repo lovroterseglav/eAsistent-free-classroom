@@ -55,7 +55,7 @@ All API errors use the JSON envelope `{ "v": 1, "error": { "code": "...", "messa
 
 `GET /api/v1/schools`
 
-Returns schools bundled with the project and schools that the server has successfully verified. A new school is stored by token, with its root URL constructed as `https://urniki.easistent.com/urniki/TOKEN`. A permanently unavailable school is removed only after a 404 or 410 response; transient failures do not remove it.
+Returns schools that the server has successfully verified and saved in the persistent catalog. A new school is stored by token, with its root URL constructed as `https://urniki.easistent.com/urniki/TOKEN`. A permanently unavailable school is removed only after a 404 or 410 response; transient failures do not remove it.
 
 ### Inspect a school
 
