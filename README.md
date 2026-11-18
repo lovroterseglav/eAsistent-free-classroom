@@ -34,6 +34,14 @@ venv/bin/gunicorn --bind 127.0.0.1:3100 --workers 1 \
 
 Use a reverse proxy for public HTTPS. Keep one worker because admission control, caches, and the school catalog are process-local. One worker admits up to 25 simultaneous availability searches, runs at most 32 eAsistent requests globally, and runs at most six classroom requests for each search.
 
+After the systemd service has been configured, update the checked-out repository and restart the service with:
+
+```sh
+./deploy.sh
+```
+
+The default service is `easistent-free-classroom.service`. Pass a different unit name as the first argument when needed, for example `./deploy.sh proste-ucilnice.service`.
+
 The server accepts these optional environment variables:
 
 - `SCHOOL_CATALOG_PATH`: persistent school-catalog file; defaults to `.data/schools.json`.
