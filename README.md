@@ -42,6 +42,14 @@ After the systemd service has been configured, update the checked-out repository
 
 The default service is `easistent-free-classroom.service`. Pass a different unit name as the first argument when needed, for example `./deploy.sh proste-ucilnice.service`.
 
+Follow production logs with:
+
+```sh
+sudo journalctl -u easistent-free-classroom.service -f
+```
+
+Every classroom reported under “Ni bilo mogoče preveriti” produces a `classroom_check_unknown` or `classroom_check_failed` warning with its ID, name, date, period, failure reason, request URL, and upstream status when available. Retried eAsistent requests are logged as `easistent_request_retry`.
+
 The server accepts these optional environment variables:
 
 - `SCHOOL_CATALOG_PATH`: persistent school-catalog file; defaults to `.data/schools.json`.

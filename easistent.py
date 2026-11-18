@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 import unicodedata
@@ -18,6 +19,7 @@ from bs4 import BeautifulSoup, Tag
 from cache import AsyncTtlLruCache
 
 
+logger = logging.getLogger("easistent")
 ALLOWED_HOSTS = {"urniki.easistent.com", "www.easistent.com"}
 SCHOOL_TOKEN = re.compile(r"^[a-f0-9]{40}$", re.IGNORECASE)
 AJAX_PATH = re.compile(
@@ -466,6 +468,7 @@ class EasistentService:
                     index = next_index
                     next_index += 1
                 room = classrooms[index]
+                target_url: str | None = None
                 try:
                     public_page = await self.fetch_page(room["url"])
                     target_url = ajax_timetable_url(public_page.html, public_page.response_url, week)
@@ -477,10 +480,35 @@ class EasistentService:
                     state = await self._parse(
                         room_availability, page.html, requested_date, period_number
                     )
+                    if state == "unknown":
+                        logger.warning(
+                            "classroom_check_unknown school_token=%s room_id=%s "
+                            "room_name=%r date=%s period=%s reason=missing_timetable_cell "
+                            "ajax_url_found=%s page_url=%s",
+                            parsed["schoolToken"],
+                            room["id"],
+                            room["name"],
+                            requested_date,
+                            period_number,
+                            target_url is not None,
+                            page.response_url,
+                        )
                 except asyncio.CancelledError:
                     raise
-                except AppError:
+                except AppError as error:
                     state = "unknown"
+                    logger.warning(
+                        "classroom_check_failed school_token=%s room_id=%s room_name=%r "
+                        "date=%s period=%s error_code=%s upstream_status=%s request_url=%s",
+                        parsed["schoolToken"],
+                        room["id"],
+                        room["name"],
+                        requested_date,
+                        period_number,
+                        error.code,
+                        error.upstream_status,
+                        target_url or room["url"],
+                    )
                 states[index] = {"room": room, "state": state}
 
         await asyncio.gather(*(
@@ -612,12 +640,34 @@ class EasistentService:
                 response = await self._request_once(url, headers)
                 if response.status not in RETRYABLE_STATUS or attempt == len(RETRY_DELAYS):
                     return response
+                logger.warning(
+                    "easistent_request_retry url=%s failed_attempt=%s reason=http_status "
+                    "status=%s delay_ms=%s",
+                    url,
+                    attempt + 1,
+                    response.status,
+                    round(RETRY_DELAYS[attempt] * 1_000),
+                )
             except httpx.TimeoutException as error:
                 if attempt == len(RETRY_DELAYS):
                     raise AppError(504, "UPSTREAM_TIMEOUT", "eAsistent se ni pravočasno odzval.") from error
+                logger.warning(
+                    "easistent_request_retry url=%s failed_attempt=%s reason=timeout delay_ms=%s",
+                    url,
+                    attempt + 1,
+                    round(RETRY_DELAYS[attempt] * 1_000),
+                )
             except httpx.RequestError as error:
                 if attempt == len(RETRY_DELAYS):
                     raise AppError(502, "UPSTREAM_UNREACHABLE", "Povezave z eAsistentom ni bilo mogoče vzpostaviti.") from error
+                logger.warning(
+                    "easistent_request_retry url=%s failed_attempt=%s reason=request_error "
+                    "error_type=%s delay_ms=%s",
+                    url,
+                    attempt + 1,
+                    type(error).__name__,
+                    round(RETRY_DELAYS[attempt] * 1_000),
+                )
             await self.sleep(RETRY_DELAYS[attempt])
         raise AppError(502, "UPSTREAM_UNREACHABLE", "Povezave z eAsistentom ni bilo mogoče vzpostaviti.")
 

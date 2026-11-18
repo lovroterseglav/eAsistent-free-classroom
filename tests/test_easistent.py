@@ -106,6 +106,28 @@ class EasistentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("cookie", request.headers)
             self.assertEqual(request.url.query, b"")
 
+    async def test_logs_why_a_classroom_is_unknown(self) -> None:
+        pages = {
+            SCHOOL_URL: CLASS_PAGE,
+            ROOM_ONE_URL: ROOM_INDEX_PAGE,
+            ROOM_TWO_URL: ROOM_CANCELLED_PAGE,
+            ROOM_ONE_AJAX_URL: page_for_date("2026-11-17"),
+            ROOM_TWO_AJAX_URL: page_for_date("2026-11-18"),
+        }
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return html(pages[str(request.url)]) if str(request.url) in pages else html("missing", 404)
+
+        with self.assertLogs("easistent", level="WARNING") as captured:
+            result = await self.service(handler).availability(SCHOOL_URL, "2026-11-17", 1)
+
+        self.assertEqual(result["rooms"]["unknown"], [{"id": "1333035", "name": "11"}])
+        message = "\n".join(captured.output)
+        self.assertIn("classroom_check_unknown", message)
+        self.assertIn("room_id=1333035", message)
+        self.assertIn("date=2026-11-17", message)
+        self.assertIn("reason=missing_timetable_cell", message)
+
     async def test_retries_three_times_then_succeeds(self) -> None:
         attempts = 0
         delays: list[float] = []
@@ -120,10 +142,12 @@ class EasistentServiceTest(unittest.IsolatedAsyncioTestCase):
         async def wait(delay: float) -> None:
             delays.append(delay)
 
-        result = await self.service(handler, sleep=wait).inspect(SCHOOL_URL)
+        with self.assertLogs("easistent", level="WARNING") as captured:
+            result = await self.service(handler, sleep=wait).inspect(SCHOOL_URL)
         self.assertEqual(result["inspection"]["school"]["name"], "Gimnazija Kranj")
         self.assertEqual(attempts, 4)
         self.assertEqual(delays, [0.25, 0.5, 1.0])
+        self.assertEqual("\n".join(captured.output).count("easistent_request_retry"), 3)
 
     async def test_does_not_retry_not_found(self) -> None:
         attempts = 0
