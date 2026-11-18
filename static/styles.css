@@ -81,7 +81,18 @@ input:disabled { opacity: 0.55; cursor: not-allowed; }
 .choice-dropdown[open] summary { border-color: #1f7256; box-shadow: 0 0 0 3px #cce5d8; }
 .choice-dropdown[data-disabled] { opacity: 0.55; }
 .choice-dropdown[data-disabled] summary { cursor: not-allowed; }
-.chevron { color: #59635f; font-size: 1.15rem; transition: transform 0.15s ease; }
+.chevron {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #59635f;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
 .choice-dropdown[open] .chevron { transform: rotate(180deg); }
 .choice-panel {
   position: absolute;
