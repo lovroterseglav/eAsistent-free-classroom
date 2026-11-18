@@ -51,6 +51,7 @@ let currentSchool = null;
 let selectedPeriodNumber = null;
 let activeController = null;
 let loading = false;
+const appRoot = new URL("../", import.meta.url);
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -58,6 +59,10 @@ class ApiError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+function appUrl(path) {
+  return new URL(path.replace(/^\/+/, ""), appRoot);
 }
 
 function readLegacySchools() {
@@ -107,14 +112,14 @@ function setFavoriteToken(token) {
 }
 
 async function apiGet(path) {
-  const response = await fetch(path, { headers: { Accept: "application/json" } });
+  const response = await fetch(appUrl(path), { headers: { Accept: "application/json" } });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new ApiError(response.status, data?.error?.code, data?.error?.message ?? `API je vrnil HTTP ${response.status}.`);
   return data;
 }
 
 async function apiRequest(path, body, signal) {
-  const response = await fetch(path, {
+  const response = await fetch(appUrl(path), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),

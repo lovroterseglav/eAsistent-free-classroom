@@ -77,6 +77,20 @@ class WebTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('/static/app.js', response.text)
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
 
+    async def test_forwarded_prefix_updates_asset_and_api_paths(self) -> None:
+        headers = {"x-forwarded-prefix": "/proste-ucilnice"}
+        response = await self.client.get("/", headers=headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('/proste-ucilnice/static/styles.css', response.text)
+        self.assertIn('/proste-ucilnice/static/app.js', response.text)
+
+        script = await self.client.get("/static/app.js", headers=headers)
+        self.assertEqual(script.status_code, 200)
+        self.assertIn('const appRoot = new URL("../", import.meta.url);', script.text)
+
+        invalid = await self.client.get("/", headers={"x-forwarded-prefix": "/../wrong"})
+        self.assertIn('href="/static/styles.css"', invalid.text)
+
     async def test_health_catalog_inspection_and_availability(self) -> None:
         health = await self.client.get("/api/v1/health")
         self.assertEqual(health.json(), {"ok": True, "cache": {"pages": 0}})

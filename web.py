@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
@@ -29,6 +30,7 @@ ROOT = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=ROOT / "templates")
 BODY_LIMIT = 8 * 1024
 CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
+FORWARDED_PREFIX = re.compile(r"^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$")
 
 
 class TimetableBody(BaseModel):
@@ -212,7 +214,11 @@ def create_app(
 
     @application.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(request=request, name="index.html")
+        return templates.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={"app_prefix": _forwarded_prefix(request)},
+        )
 
     @application.get("/api/v1/health")
     async def health(request: Request) -> dict[str, Any]:
@@ -255,6 +261,16 @@ def create_app(
             await capacity.release()
 
     return application
+
+
+def _forwarded_prefix(request: Request) -> str:
+    prefix = request.headers.get("x-forwarded-prefix", "").strip().rstrip("/")
+    segments = prefix.split("/")[1:]
+    return (
+        prefix
+        if FORWARDED_PREFIX.fullmatch(prefix) and all(segment not in {".", ".."} for segment in segments)
+        else ""
+    )
 
 
 async def _remove_permanently_missing_school(
